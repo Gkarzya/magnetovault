@@ -8,7 +8,7 @@ import os
 from scipy.ndimage import gaussian_filter
 
 # --- 1. CONFIGURATION ---
-st.set_page_config(layout="wide", page_title="Magnetovault V236 - Stable Restore")
+st.set_page_config(layout="wide", page_title="Magnetovault V237 - Stable & Logo Fix")
 
 # Imports Médicaux
 try:
@@ -18,7 +18,8 @@ try:
 except ImportError:
     HAS_NILEARN = False
 
-# --- 2. CONSTANTES PHYSIQUES (Ajustées pour contraste réaliste V232) ---
+# --- 2. CONSTANTES PHYSIQUES ---
+# T1 LCR ajusté (3607ms) pour annulation parfaite à TI=2500ms
 T_FAT = {'T1': 260.0, 'T2': 60.0, 'PD': 1.0, 'Label': 'Graisse'}
 T_LCR = {'T1': 3607.0, 'T2': 2000.0, 'PD': 1.0, 'Label': 'Eau (LCR)'}
 T_GM  = {'T1': 1300.0, 'T2': 140.0, 'PD': 0.95, 'Label': 'Subst. Grise'}
@@ -36,27 +37,26 @@ def reset_all():
     st.session_state['turbo_slider'] = 1
     st.session_state['es_slider'] = 15.0
     
+    # Nettoyage des clés dynamiques
     keys_to_clear = [k for k in st.session_state.keys() if k.startswith(('tr_', 'te_', 'ti_'))]
     for k in keys_to_clear:
         del st.session_state[k]
         
     st.rerun()
 
-# --- LOGO ROBUSTE ---
-# On récupère le chemin exact du dossier où se trouve ce fichier v236.py
+# --- LOGO ROBUSTE (Correction V237) ---
+# Recherche le logo dans le même dossier que ce fichier script
 dossier_actuel = os.path.dirname(os.path.abspath(__file__))
-# On construit le chemin complet vers l'image
 chemin_logo = os.path.join(dossier_actuel, "logo_mia.png")
 
-# On affiche l'image si on la trouve
 if os.path.exists(chemin_logo):
     st.sidebar.image(chemin_logo, width=280)
-else:
-    # Plan B : on essaie à la racine au cas où
-    if os.path.exists("logo_mia.png"):
-        st.sidebar.image("logo_mia.png", width=280)
-    else:
-        st.sidebar.warning("Logo introuvable")
+elif os.path.exists("logo_mia.png"): # Fallback
+    st.sidebar.image("logo_mia.png", width=280)
+
+st.sidebar.title("Réglages")
+# --- BOUTON RESET (Restauré) ---
+st.sidebar.button("Reset Standard", on_click=reset_all)
 
 # Choix Séquence
 options_seq = [
@@ -204,7 +204,7 @@ def apply_window_level(image, window, level):
     return np.clip((image - vmin)/(vmax - vmin), 0, 1)
 
 # --- 8. AFFICHAGE FINAL ---
-st.title("Simulateur MagnétoVault V236")
+st.title("Simulateur MagnétoVault V237")
 t1, t2, t3, t4, t5, t6, t7 = st.tabs(["Fantôme", "Espace K 🌀", "Signaux", "Codage", "🧠 Anatomie", "📈 Physique", "⚡ Chronogramme"])
 
 # TAB 1
@@ -303,7 +303,7 @@ with t4:
     h4="const yz=175-(zv/100)*150;const gr=z.createLinearGradient(0,0,0,350);gr.addColorStop(0,'red');gr.addColorStop(1,'blue');z.fillStyle=gr;z.fillRect(10,10,20,330);z.strokeStyle='black';z.lineWidth=3;z.beginPath();z.moveTo(10,yz);z.lineTo(70,yz);z.stroke();z.fillStyle='black';z.fillText('Z',35,yz-5);} [sf,sp,sz,sg].forEach(s=>s.addEventListener('input',draw));function rst(){sf.value=0;sp.value=0;sz.value=0;sg.value=12;draw();}draw();</script></body></html>"
     components.html(h1+h2+h3+h4, height=450)
 
-# TAB 5 (ANATOMIE - RETOUR STABLE)
+# TAB 5
 with t5:
     st.header("Exploration Anatomique")
     if HAS_NILEARN and processor.ready:
@@ -328,10 +328,9 @@ with t5:
     else:
         st.warning("Module 'nilearn' manquant.")
 
-# TAB 6 : PHYSIQUE
+# TAB 6 : PHYSIQUE (Relaxation + Couleur Fix)
 with t6:
     st.header("📈 Physique : Courbes de Relaxation")
-    # Pas de texte ici
     
     tists = [T_FAT, T_WM, T_GM, T_LCR]
     cols = ['orange', 'lightgray', 'dimgray', 'cyan'] 
@@ -351,7 +350,6 @@ with t6:
             mz = 1 - 2 * np.exp(-x_t / t['T1'])
             ax_t1.plot(x_t, mz, label=t['Label'], color=col, linewidth=2)
         ax_t1.axvline(x=ti, color='green', linestyle='--', linewidth=2, label=f'TI (Mesure)')
-        # Correction texte
         st.write(f"**Séquence Inversion-Récupération** : TI = {ti:.0f} ms")
         gradient = np.abs(np.linspace(1, -1, 256)).reshape(-1, 1)
         ax_bar.imshow(gradient, aspect='auto', cmap='gray', extent=[0, 1, -1.1, 1.1])
@@ -391,10 +389,9 @@ with t6:
     ax_bar2.set_axis_off(); ax_bar2.set_title("Signal")
     st.pyplot(fig_t2)
 
-# TAB 7 : CHRONOGRAMME (NETTOYÉ)
+# TAB 7 : CHRONOGRAMME (Clean)
 with t7:
     st.header("⚡ Diagramme : TE Effectif vs TE Mini")
-    # Pas de texte ici
     
     total_time = max(te * 1.5, (turbo + 1) * es + 20)
     t_seq = np.linspace(0, total_time, 1000)
