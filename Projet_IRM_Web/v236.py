@@ -42,17 +42,21 @@ def reset_all():
         
     st.rerun()
 
-# Logo
-logo_path = None
-possible_logos = ["logo_mia.jpg", "logo_mia.png", "logo_mia.jpeg"]
-for f in possible_logos:
-    if os.path.exists(f):
-        logo_path = f
-        break
-if logo_path: st.sidebar.image(logo_path, width=280)
+# --- LOGO ROBUSTE ---
+# On récupère le chemin exact du dossier où se trouve ce fichier v236.py
+dossier_actuel = os.path.dirname(os.path.abspath(__file__))
+# On construit le chemin complet vers l'image
+chemin_logo = os.path.join(dossier_actuel, "logo_mia.png")
 
-st.sidebar.title("Réglages")
-st.sidebar.button("Reset Standard", on_click=reset_all)
+# On affiche l'image si on la trouve
+if os.path.exists(chemin_logo):
+    st.sidebar.image(chemin_logo, width=280)
+else:
+    # Plan B : on essaie à la racine au cas où
+    if os.path.exists("logo_mia.png"):
+        st.sidebar.image("logo_mia.png", width=280)
+    else:
+        st.sidebar.warning("Logo introuvable")
 
 # Choix Séquence
 options_seq = [
