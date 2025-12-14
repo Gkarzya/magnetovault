@@ -8,7 +8,7 @@ import os
 from scipy.ndimage import gaussian_filter
 
 # --- 1. CONFIGURATION ---
-st.set_page_config(layout="wide", page_title="Magnetovault V237 - Stable & Logo Fix")
+st.set_page_config(layout="wide", page_title="Magnetovault V238 - Reset Total")
 
 # Imports Médicaux
 try:
@@ -19,7 +19,6 @@ except ImportError:
     HAS_NILEARN = False
 
 # --- 2. CONSTANTES PHYSIQUES ---
-# T1 LCR ajusté (3607ms) pour annulation parfaite à TI=2500ms
 T_FAT = {'T1': 260.0, 'T2': 60.0, 'PD': 1.0, 'Label': 'Graisse'}
 T_LCR = {'T1': 3607.0, 'T2': 2000.0, 'PD': 1.0, 'Label': 'Eau (LCR)'}
 T_GM  = {'T1': 1300.0, 'T2': 140.0, 'PD': 0.95, 'Label': 'Subst. Grise'}
@@ -32,30 +31,36 @@ if 'init' not in st.session_state:
 
 # --- 4. BARRE LATÉRALE ---
 def reset_all():
+    # 1. Reset Sequence
     st.session_state['seq_selector'] = "T1 Standard"
     st.session_state.seq = "T1 Standard"
+    
+    # 2. Reset Sliders Options (Turbo/ES)
     st.session_state['turbo_slider'] = 1
     st.session_state['es_slider'] = 15.0
     
-    # Nettoyage des clés dynamiques
+    # 3. Reset Sliders Géométrie (NOUVEAU V238)
+    st.session_state['fov_slider'] = 240.0
+    st.session_state['mat_slider'] = 256
+    st.session_state['ep_slider'] = 5.0
+    st.session_state['nex_slider'] = 1
+    
+    # 4. Reset TR/TE/TI (Suppression des clés dynamiques pour forcer le défaut)
     keys_to_clear = [k for k in st.session_state.keys() if k.startswith(('tr_', 'te_', 'ti_'))]
     for k in keys_to_clear:
         del st.session_state[k]
         
     st.rerun()
 
-# --- LOGO ROBUSTE (Correction V237) ---
-# Recherche le logo dans le même dossier que ce fichier script
+# --- LOGO ---
 dossier_actuel = os.path.dirname(os.path.abspath(__file__))
 chemin_logo = os.path.join(dossier_actuel, "logo_mia.png")
-
 if os.path.exists(chemin_logo):
     st.sidebar.image(chemin_logo, width=280)
-elif os.path.exists("logo_mia.png"): # Fallback
+elif os.path.exists("logo_mia.png"):
     st.sidebar.image("logo_mia.png", width=280)
 
 st.sidebar.title("Réglages")
-# --- BOUTON RESET (Restauré) ---
 st.sidebar.button("Reset Standard", on_click=reset_all)
 
 # Choix Séquence
@@ -82,7 +87,7 @@ elif seq_choix == "DP (Densité Protons)": defaults = {'tr': 2200.0, 'te': 30.0,
 elif "FLAIR" in seq_choix: defaults = {'tr': 9000.0, 'te': 110.0, 'ti': 2500.0}
 elif "STIR" in seq_choix: defaults = {'tr': 3500.0, 'te': 50.0, 'ti': 150.0}
 
-# Sliders
+# Sliders Chrono
 st.sidebar.header("1. Chrono (ms)")
 is_ir = "FLAIR" in seq_choix or "STIR" in seq_choix
 
@@ -94,13 +99,15 @@ else:
 tr = st.sidebar.slider("TR", 100.0, 10000.0, float(defaults['tr']), step=50.0, key=f"tr_{seq_choix}")
 te = st.sidebar.slider("TE Effectif", 5.0, 300.0, float(defaults['te']), step=5.0, key=f"te_{seq_choix}")
 
+# Sliders Géométrie (Avec clés pour Reset)
 st.sidebar.header("2. Géométrie")
-fov = st.sidebar.slider("FOV", 100.0, 500.0, 240.0, step=10.0)
-mat = st.sidebar.select_slider("Matrice", options=[64, 128, 256, 512], value=256)
-ep = st.sidebar.slider("Epaisseur", 1.0, 10.0, 5.0, step=0.5)
+fov = st.sidebar.slider("FOV", 100.0, 500.0, 240.0, step=10.0, key='fov_slider')
+mat = st.sidebar.select_slider("Matrice", options=[64, 128, 256, 512], value=256, key='mat_slider')
+ep = st.sidebar.slider("Epaisseur", 1.0, 10.0, 5.0, step=0.5, key='ep_slider')
 
+# Sliders Options
 st.sidebar.header("3. Options (Turbo)")
-nex = st.sidebar.slider("NEX", 1, 8, 1)
+nex = st.sidebar.slider("NEX", 1, 8, 1, key='nex_slider')
 turbo = st.sidebar.slider("Turbo (Facteur de Train)", 1, 16, 1, key='turbo_slider')
 es = st.sidebar.slider("TE Mini (Espacement)", 5.0, 50.0, 15.0, step=1.0, key='es_slider')
 
@@ -204,7 +211,7 @@ def apply_window_level(image, window, level):
     return np.clip((image - vmin)/(vmax - vmin), 0, 1)
 
 # --- 8. AFFICHAGE FINAL ---
-st.title("Simulateur MagnétoVault V237")
+st.title("Simulateur MagnétoVault V238")
 t1, t2, t3, t4, t5, t6, t7 = st.tabs(["Fantôme", "Espace K 🌀", "Signaux", "Codage", "🧠 Anatomie", "📈 Physique", "⚡ Chronogramme"])
 
 # TAB 1
@@ -303,7 +310,7 @@ with t4:
     h4="const yz=175-(zv/100)*150;const gr=z.createLinearGradient(0,0,0,350);gr.addColorStop(0,'red');gr.addColorStop(1,'blue');z.fillStyle=gr;z.fillRect(10,10,20,330);z.strokeStyle='black';z.lineWidth=3;z.beginPath();z.moveTo(10,yz);z.lineTo(70,yz);z.stroke();z.fillStyle='black';z.fillText('Z',35,yz-5);} [sf,sp,sz,sg].forEach(s=>s.addEventListener('input',draw));function rst(){sf.value=0;sp.value=0;sz.value=0;sg.value=12;draw();}draw();</script></body></html>"
     components.html(h1+h2+h3+h4, height=450)
 
-# TAB 5
+# TAB 5 (ANATOMIE - AVEC AUTO-LEVELING)
 with t5:
     st.header("Exploration Anatomique")
     if HAS_NILEARN and processor.ready:
@@ -322,20 +329,24 @@ with t5:
             img_raw = processor.get_slice(ax, idx, w_vals)
             
             if img_raw is not None:
+                # NORMALISATION CRITIQUE POUR EVITER IMAGE NOIRE
+                max_val = np.max(img_raw)
+                if max_val > 0.0001:
+                    img_raw = img_raw / max_val
+                
                 img_wl = apply_window_level(img_raw, window, level)
                 st.image(img_wl, clamp=True, width=600, caption=f"MNI152 - {plane}")
             else: st.error("Erreur image.")
     else:
         st.warning("Module 'nilearn' manquant.")
 
-# TAB 6 : PHYSIQUE (Relaxation + Couleur Fix)
+# TAB 6 : PHYSIQUE
 with t6:
     st.header("📈 Physique : Courbes de Relaxation")
-    
     tists = [T_FAT, T_WM, T_GM, T_LCR]
     cols = ['orange', 'lightgray', 'dimgray', 'cyan'] 
     
-    # 1. COURBE LONGITUDINALE
+    # 1. LONGITUDINAL
     st.subheader(f"1. Relaxation Longitudinale (Mz)")
     fig_t1 = plt.figure(figsize=(10, 4))
     gs = fig_t1.add_gridspec(1, 2, width_ratios=[30, 1], wspace=0.05)
@@ -349,7 +360,7 @@ with t6:
         for t, col in zip(tists, cols):
             mz = 1 - 2 * np.exp(-x_t / t['T1'])
             ax_t1.plot(x_t, mz, label=t['Label'], color=col, linewidth=2)
-        ax_t1.axvline(x=ti, color='green', linestyle='--', linewidth=2, label=f'TI (Mesure)')
+        ax_t1.axvline(x=ti, color='green', linestyle='--', linewidth=2, label=f'TI')
         st.write(f"**Séquence Inversion-Récupération** : TI = {ti:.0f} ms")
         gradient = np.abs(np.linspace(1, -1, 256)).reshape(-1, 1)
         ax_bar.imshow(gradient, aspect='auto', cmap='gray', extent=[0, 1, -1.1, 1.1])
@@ -359,7 +370,7 @@ with t6:
         for t, col in zip(tists, cols):
             mz = 1 - np.exp(-x_t / t['T1'])
             ax_t1.plot(x_t, mz, label=t['Label'], color=col, linewidth=2)
-        ax_t1.axvline(x=tr, color='red', linestyle='--', linewidth=2, label=f'TR (Répétition)')
+        ax_t1.axvline(x=tr, color='red', linestyle='--', linewidth=2, label=f'TR')
         gradient = np.linspace(1, 0, 256).reshape(-1, 1)
         ax_bar.imshow(gradient, aspect='auto', cmap='gray', extent=[0, 1, 0, 1.1])
 
@@ -369,7 +380,7 @@ with t6:
     ax_bar.set_axis_off(); ax_bar.set_title("Signal")
     st.pyplot(fig_t1)
     
-    # 2. COURBE TRANSVERSALE
+    # 2. TRANSVERSAL
     st.subheader(f"2. Relaxation Transversale (Mxy) - T2")
     fig_t2 = plt.figure(figsize=(10, 4))
     gs2 = fig_t2.add_gridspec(1, 2, width_ratios=[30, 1], wspace=0.05)
@@ -389,7 +400,7 @@ with t6:
     ax_bar2.set_axis_off(); ax_bar2.set_title("Signal")
     st.pyplot(fig_t2)
 
-# TAB 7 : CHRONOGRAMME (Clean)
+# TAB 7 : CHRONOGRAMME
 with t7:
     st.header("⚡ Diagramme : TE Effectif vs TE Mini")
     
