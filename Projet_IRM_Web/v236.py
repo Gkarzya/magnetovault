@@ -8,7 +8,7 @@ import os
 from scipy.ndimage import gaussian_filter
 
 # --- 1. CONFIGURATION ---
-st.set_page_config(layout="wide", page_title="Magnetovault V239 - Reset Universel")
+st.set_page_config(layout="wide", page_title="Magnetovault V240 - Reset Radical")
 
 # Imports Médicaux
 try:
@@ -27,38 +27,22 @@ T_WM  = {'T1': 600.0,  'T2': 90.0,  'PD': 0.70, 'Label': 'Subst. Blanche'}
 # --- 3. INITIALISATION ---
 if 'init' not in st.session_state:
     st.session_state.seq = 'T1 Standard'
+    st.session_state.reset_count = 0 # Compteur pour forcer le reset
     st.session_state.init = True
 
-# --- 4. BARRE LATÉRALE ---
+# --- 4. FONCTION RESET RADICAL ---
 def reset_all():
-    # 1. Reset Sequence
-    st.session_state['seq_selector'] = "T1 Standard"
+    # On change l'identité de tous les widgets pour forcer leur recréation
+    st.session_state.reset_count += 1
+    # On remet la logique interne à zéro
     st.session_state.seq = "T1 Standard"
-    
-    # 2. Reset Sliders Sidebar
-    st.session_state['turbo_slider'] = 1
-    st.session_state['es_slider'] = 15.0
-    st.session_state['fov_slider'] = 240.0
-    st.session_state['mat_slider'] = 256
-    st.session_state['ep_slider'] = 5.0
-    st.session_state['nex_slider'] = 1
-    
-    # 3. Reset TR/TE/TI (Suppression des clés dynamiques)
-    keys_to_clear = [k for k in st.session_state.keys() if k.startswith(('tr_', 'te_', 'ti_'))]
-    for k in keys_to_clear:
-        del st.session_state[k]
-        
-    # 4. Reset Onglet 2 (Espace K)
-    st.session_state['k_mode'] = "Linéaire (Haut -> Bas)"
-    st.session_state['k_pct'] = 10
-    
-    # 5. Reset Onglet 5 (Anatomie)
-    st.session_state['orient_v214'] = "Plan Axial"
-    st.session_state['win_slider'] = 1.0
-    st.session_state['lev_slider'] = 0.5
-    st.session_state['slice_slider'] = 90 # Valeur moyenne approx
-        
+    # Pas besoin de remettre les valeurs manuellement, 
+    # le changement de Key va forcer les valeurs par défaut ci-dessous.
     st.rerun()
+
+# Clé dynamique pour les widgets
+def get_key(name):
+    return f"{name}_{st.session_state.reset_count}"
 
 # --- LOGO ---
 dossier_actuel = os.path.dirname(os.path.abspath(__file__))
@@ -80,15 +64,22 @@ options_seq = [
     "Séquence STIR (Graisse)" 
 ]
 
+# Logique pour garder la synchro entre la variable interne et le widget
 try:
-    idx = options_seq.index(st.session_state.seq)
+    default_idx = options_seq.index(st.session_state.seq)
 except:
-    idx = 0
-    
-seq_choix = st.sidebar.selectbox("Séquence", options_seq, index=idx, key='seq_selector')
+    default_idx = 0
+
+# Widget Séquence (Avec clé dynamique)
+seq_choix = st.sidebar.selectbox(
+    "Séquence", 
+    options_seq, 
+    index=default_idx, 
+    key=get_key('seq_selector')
+)
 st.session_state.seq = seq_choix
 
-# Defaults
+# Defaults selon la séquence choisie
 defaults = {'tr': 500.0, 'te': 15.0, 'ti': 0.0}
 if seq_choix == "T2 Standard": defaults = {'tr': 4000.0, 'te': 100.0, 'ti': 0.0}
 elif seq_choix == "DP (Densité Protons)": defaults = {'tr': 2200.0, 'te': 30.0, 'ti': 0.0}
@@ -100,24 +91,24 @@ st.sidebar.header("1. Chrono (ms)")
 is_ir = "FLAIR" in seq_choix or "STIR" in seq_choix
 
 if is_ir:
-    ti = st.sidebar.slider("TI", 0.0, 3500.0, float(defaults['ti']), step=10.0, key=f"ti_{seq_choix}")
+    ti = st.sidebar.slider("TI", 0.0, 3500.0, float(defaults['ti']), step=10.0, key=get_key('ti'))
 else:
     ti = 0.0
 
-tr = st.sidebar.slider("TR", 100.0, 10000.0, float(defaults['tr']), step=50.0, key=f"tr_{seq_choix}")
-te = st.sidebar.slider("TE Effectif", 5.0, 300.0, float(defaults['te']), step=5.0, key=f"te_{seq_choix}")
+tr = st.sidebar.slider("TR", 100.0, 10000.0, float(defaults['tr']), step=50.0, key=get_key('tr'))
+te = st.sidebar.slider("TE Effectif", 5.0, 300.0, float(defaults['te']), step=5.0, key=get_key('te'))
 
-# Sliders Géométrie
+# Sliders Géométrie (Valeurs par défaut forcées ici)
 st.sidebar.header("2. Géométrie")
-fov = st.sidebar.slider("FOV", 100.0, 500.0, 240.0, step=10.0, key='fov_slider')
-mat = st.sidebar.select_slider("Matrice", options=[64, 128, 256, 512], value=256, key='mat_slider')
-ep = st.sidebar.slider("Epaisseur", 1.0, 10.0, 5.0, step=0.5, key='ep_slider')
+fov = st.sidebar.slider("FOV", 100.0, 500.0, 240.0, step=10.0, key=get_key('fov'))
+mat = st.sidebar.select_slider("Matrice", options=[64, 128, 256, 512], value=256, key=get_key('mat'))
+ep = st.sidebar.slider("Epaisseur", 1.0, 10.0, 5.0, step=0.5, key=get_key('ep'))
 
 # Sliders Options
 st.sidebar.header("3. Options (Turbo)")
-nex = st.sidebar.slider("NEX", 1, 8, 1, key='nex_slider')
-turbo = st.sidebar.slider("Turbo (Facteur de Train)", 1, 16, 1, key='turbo_slider')
-es = st.sidebar.slider("TE Mini (Espacement)", 5.0, 50.0, 15.0, step=1.0, key='es_slider')
+nex = st.sidebar.slider("NEX", 1, 8, 1, key=get_key('nex'))
+turbo = st.sidebar.slider("Turbo (Facteur de Train)", 1, 16, 1, key=get_key('turbo'))
+es = st.sidebar.slider("TE Mini (Espacement)", 5.0, 50.0, 15.0, step=1.0, key=get_key('es'))
 
 # --- 5. CALCULS GLOBAUX ---
 def get_signal_val(t1, t2, pd):
@@ -219,7 +210,7 @@ def apply_window_level(image, window, level):
     return np.clip((image - vmin)/(vmax - vmin), 0, 1)
 
 # --- 8. AFFICHAGE FINAL ---
-st.title("Simulateur MagnétoVault V239")
+st.title("Simulateur MagnétoVault V240")
 t1, t2, t3, t4, t5, t6, t7 = st.tabs(["Fantôme", "Espace K 🌀", "Signaux", "Codage", "🧠 Anatomie", "📈 Physique", "⚡ Chronogramme"])
 
 # TAB 1
@@ -256,9 +247,9 @@ with t2:
     col_k1, col_k2 = st.columns([1, 1])
     with col_k1:
         st.markdown("#### 1. Paramètres de Remplissage")
-        # AJOUT KEY
-        fill_mode = st.radio("Ordre de Remplissage", ["Linéaire (Haut -> Bas)", "Centrique (Centre -> Bords)"], key='k_mode')
-        acq_pct = st.slider("Progression (%)", 0, 100, 10, step=1, key='k_pct')
+        # Clefs dynamiques ici aussi
+        fill_mode = st.radio("Ordre de Remplissage", ["Linéaire (Haut -> Bas)", "Centrique (Centre -> Bords)"], key=get_key('k_mode'))
+        acq_pct = st.slider("Progression (%)", 0, 100, 10, step=1, key=get_key('k_pct'))
         
         mask_k = np.zeros((S, S))
         lines_to_fill = int(S * (acq_pct / 100.0))
@@ -327,13 +318,13 @@ with t5:
         dims = processor.get_dims()
         with c1:
             plane = st.radio("Plan de Coupe", ["Plan Axial", "Plan Sagittal", "Plan Coronal"], key="orient_v214")
-            if "Axial" in plane: idx = st.slider("Z", 0, dims[2]-1, 90, key='slice_slider'); ax='z'
-            elif "Sagittal" in plane: idx = st.slider("X", 0, dims[0]-1, 90, key='slice_slider'); ax='x'
-            else: idx = st.slider("Y", 0, dims[1]-1, 100, key='slice_slider'); ax='y'
+            if "Axial" in plane: idx = st.slider("Z", 0, dims[2]-1, 90, key=get_key('slice')); ax='z'
+            elif "Sagittal" in plane: idx = st.slider("X", 0, dims[0]-1, 90, key=get_key('slice')); ax='x'
+            else: idx = st.slider("Y", 0, dims[1]-1, 100, key=get_key('slice')); ax='y'
             st.divider()
-            # AJOUT KEYS
-            window = st.slider("Fenêtre", 0.01, 2.0, 1.0, 0.005, key='win_slider')
-            level = st.slider("Niveau", 0.0, 1.0, 0.5, 0.005, key='lev_slider')
+            # Clefs dynamiques pour le reset aussi
+            window = st.slider("Fenêtre", 0.01, 2.0, 1.0, 0.005, key=get_key('win'))
+            level = st.slider("Niveau", 0.0, 1.0, 0.5, 0.005, key=get_key('lev'))
         with c2:
             w_vals = {'csf':v_lcr, 'gm':v_gm, 'wm':v_wm, 'fat':v_fat}
             img_raw = processor.get_slice(ax, idx, w_vals)
@@ -352,7 +343,6 @@ with t5:
 # TAB 6 : PHYSIQUE
 with t6:
     st.header("📈 Physique : Courbes de Relaxation")
-    
     tists = [T_FAT, T_WM, T_GM, T_LCR]
     cols = ['orange', 'lightgray', 'dimgray', 'cyan'] 
     
