@@ -8,7 +8,7 @@ import os
 from scipy.ndimage import gaussian_filter
 
 # --- 1. CONFIGURATION ---
-st.set_page_config(layout="wide", page_title="Magnetovault V238 - Reset Total")
+st.set_page_config(layout="wide", page_title="Magnetovault V239 - Reset Universel")
 
 # Imports Médicaux
 try:
@@ -35,20 +35,28 @@ def reset_all():
     st.session_state['seq_selector'] = "T1 Standard"
     st.session_state.seq = "T1 Standard"
     
-    # 2. Reset Sliders Options (Turbo/ES)
+    # 2. Reset Sliders Sidebar
     st.session_state['turbo_slider'] = 1
     st.session_state['es_slider'] = 15.0
-    
-    # 3. Reset Sliders Géométrie (NOUVEAU V238)
     st.session_state['fov_slider'] = 240.0
     st.session_state['mat_slider'] = 256
     st.session_state['ep_slider'] = 5.0
     st.session_state['nex_slider'] = 1
     
-    # 4. Reset TR/TE/TI (Suppression des clés dynamiques pour forcer le défaut)
+    # 3. Reset TR/TE/TI (Suppression des clés dynamiques)
     keys_to_clear = [k for k in st.session_state.keys() if k.startswith(('tr_', 'te_', 'ti_'))]
     for k in keys_to_clear:
         del st.session_state[k]
+        
+    # 4. Reset Onglet 2 (Espace K)
+    st.session_state['k_mode'] = "Linéaire (Haut -> Bas)"
+    st.session_state['k_pct'] = 10
+    
+    # 5. Reset Onglet 5 (Anatomie)
+    st.session_state['orient_v214'] = "Plan Axial"
+    st.session_state['win_slider'] = 1.0
+    st.session_state['lev_slider'] = 0.5
+    st.session_state['slice_slider'] = 90 # Valeur moyenne approx
         
     st.rerun()
 
@@ -61,7 +69,7 @@ elif os.path.exists("logo_mia.png"):
     st.sidebar.image("logo_mia.png", width=280)
 
 st.sidebar.title("Réglages")
-st.sidebar.button("Reset Standard", on_click=reset_all)
+st.sidebar.button("Reset Complet", on_click=reset_all)
 
 # Choix Séquence
 options_seq = [
@@ -99,7 +107,7 @@ else:
 tr = st.sidebar.slider("TR", 100.0, 10000.0, float(defaults['tr']), step=50.0, key=f"tr_{seq_choix}")
 te = st.sidebar.slider("TE Effectif", 5.0, 300.0, float(defaults['te']), step=5.0, key=f"te_{seq_choix}")
 
-# Sliders Géométrie (Avec clés pour Reset)
+# Sliders Géométrie
 st.sidebar.header("2. Géométrie")
 fov = st.sidebar.slider("FOV", 100.0, 500.0, 240.0, step=10.0, key='fov_slider')
 mat = st.sidebar.select_slider("Matrice", options=[64, 128, 256, 512], value=256, key='mat_slider')
@@ -211,7 +219,7 @@ def apply_window_level(image, window, level):
     return np.clip((image - vmin)/(vmax - vmin), 0, 1)
 
 # --- 8. AFFICHAGE FINAL ---
-st.title("Simulateur MagnétoVault V238")
+st.title("Simulateur MagnétoVault V239")
 t1, t2, t3, t4, t5, t6, t7 = st.tabs(["Fantôme", "Espace K 🌀", "Signaux", "Codage", "🧠 Anatomie", "📈 Physique", "⚡ Chronogramme"])
 
 # TAB 1
@@ -248,8 +256,9 @@ with t2:
     col_k1, col_k2 = st.columns([1, 1])
     with col_k1:
         st.markdown("#### 1. Paramètres de Remplissage")
-        fill_mode = st.radio("Ordre de Remplissage", ["Linéaire (Haut -> Bas)", "Centrique (Centre -> Bords)"])
-        acq_pct = st.slider("Progression (%)", 0, 100, 10, step=1)
+        # AJOUT KEY
+        fill_mode = st.radio("Ordre de Remplissage", ["Linéaire (Haut -> Bas)", "Centrique (Centre -> Bords)"], key='k_mode')
+        acq_pct = st.slider("Progression (%)", 0, 100, 10, step=1, key='k_pct')
         
         mask_k = np.zeros((S, S))
         lines_to_fill = int(S * (acq_pct / 100.0))
@@ -310,7 +319,7 @@ with t4:
     h4="const yz=175-(zv/100)*150;const gr=z.createLinearGradient(0,0,0,350);gr.addColorStop(0,'red');gr.addColorStop(1,'blue');z.fillStyle=gr;z.fillRect(10,10,20,330);z.strokeStyle='black';z.lineWidth=3;z.beginPath();z.moveTo(10,yz);z.lineTo(70,yz);z.stroke();z.fillStyle='black';z.fillText('Z',35,yz-5);} [sf,sp,sz,sg].forEach(s=>s.addEventListener('input',draw));function rst(){sf.value=0;sp.value=0;sz.value=0;sg.value=12;draw();}draw();</script></body></html>"
     components.html(h1+h2+h3+h4, height=450)
 
-# TAB 5 (ANATOMIE - AVEC AUTO-LEVELING)
+# TAB 5 (ANATOMIE - AVEC AUTO-LEVELING + KEYS)
 with t5:
     st.header("Exploration Anatomique")
     if HAS_NILEARN and processor.ready:
@@ -318,18 +327,18 @@ with t5:
         dims = processor.get_dims()
         with c1:
             plane = st.radio("Plan de Coupe", ["Plan Axial", "Plan Sagittal", "Plan Coronal"], key="orient_v214")
-            if "Axial" in plane: idx = st.slider("Z", 0, dims[2]-1, 90); ax='z'
-            elif "Sagittal" in plane: idx = st.slider("X", 0, dims[0]-1, 90); ax='x'
-            else: idx = st.slider("Y", 0, dims[1]-1, 100); ax='y'
+            if "Axial" in plane: idx = st.slider("Z", 0, dims[2]-1, 90, key='slice_slider'); ax='z'
+            elif "Sagittal" in plane: idx = st.slider("X", 0, dims[0]-1, 90, key='slice_slider'); ax='x'
+            else: idx = st.slider("Y", 0, dims[1]-1, 100, key='slice_slider'); ax='y'
             st.divider()
-            window = st.slider("Fenêtre", 0.01, 2.0, 1.0, 0.005)
-            level = st.slider("Niveau", 0.0, 1.0, 0.5, 0.005)
+            # AJOUT KEYS
+            window = st.slider("Fenêtre", 0.01, 2.0, 1.0, 0.005, key='win_slider')
+            level = st.slider("Niveau", 0.0, 1.0, 0.5, 0.005, key='lev_slider')
         with c2:
             w_vals = {'csf':v_lcr, 'gm':v_gm, 'wm':v_wm, 'fat':v_fat}
             img_raw = processor.get_slice(ax, idx, w_vals)
             
             if img_raw is not None:
-                # NORMALISATION CRITIQUE POUR EVITER IMAGE NOIRE
                 max_val = np.max(img_raw)
                 if max_val > 0.0001:
                     img_raw = img_raw / max_val
@@ -343,6 +352,7 @@ with t5:
 # TAB 6 : PHYSIQUE
 with t6:
     st.header("📈 Physique : Courbes de Relaxation")
+    
     tists = [T_FAT, T_WM, T_GM, T_LCR]
     cols = ['orange', 'lightgray', 'dimgray', 'cyan'] 
     
