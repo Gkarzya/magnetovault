@@ -8,7 +8,7 @@ import os
 from scipy.ndimage import gaussian_filter, shift
 
 # --- 1. CONFIGURATION ---
-st.set_page_config(layout="wide", page_title="Magnetovault V2.86 - Gibbs Phantom Fix")
+st.set_page_config(layout="wide", page_title="Magnetovault V2.88 - Fat T2 Adjusted")
 
 # Imports Médicaux
 try:
@@ -25,8 +25,9 @@ def safe_rerun():
     except AttributeError:
         st.experimental_rerun()
 
-# --- 3. CONSTANTES PHYSIQUES ---
-T_FAT = {'T1': 260.0, 'T2': 60.0, 'PD': 1.0, 'Label': 'Graisse'}
+# --- 3. CONSTANTES PHYSIQUES (Ajustement V2.88) ---
+# T2 Graisse passé de 60.0 à 85.0 pour éviter une chute de signal trop rapide
+T_FAT = {'T1': 260.0, 'T2': 85.0, 'PD': 1.0, 'Label': 'Graisse'}
 T_LCR = {'T1': 3607.0, 'T2': 2000.0, 'PD': 1.0, 'Label': 'Eau (LCR)'}
 T_GM  = {'T1': 1300.0, 'T2': 140.0, 'PD': 0.95, 'Label': 'Subst. Grise'}
 T_WM  = {'T1': 600.0,  'T2': 90.0,  'PD': 0.70, 'Label': 'Subst. Blanche'}
@@ -69,12 +70,16 @@ except: idx_default = 0
 seq_choix = st.sidebar.selectbox("Séquence", options_seq, index=idx_default, key=seq_key)
 st.session_state.seq = seq_choix
 
-# --- 8. VALEURS PAR DÉFAUT ---
-defaults = {'tr': 500.0, 'te': 10.0, 'ti': 0.0}
-if seq_choix == "T2 Standard": defaults = {'tr': 4000.0, 'te': 100.0, 'ti': 0.0}
-elif seq_choix == "DP (Densité Protons)": defaults = {'tr': 2200.0, 'te': 30.0, 'ti': 0.0}
-elif "FLAIR" in seq_choix: defaults = {'tr': 9000.0, 'te': 110.0, 'ti': 2500.0}
-elif "STIR" in seq_choix: defaults = {'tr': 3500.0, 'te': 50.0, 'ti': 150.0}
+# --- 8. VALEURS PAR DÉFAUT & CALIBRATION DYNAMIQUE ---
+std_params = {
+    "T1 Standard": {'tr': 500.0, 'te': 10.0, 'ti': 0.0},
+    "T2 Standard": {'tr': 4000.0, 'te': 70.0, 'ti': 0.0},
+    "DP (Densité Protons)": {'tr': 2200.0, 'te': 30.0, 'ti': 0.0},
+    "FLAIR (Eau -)": {'tr': 9000.0, 'te': 110.0, 'ti': 2500.0},
+    "Séquence STIR (Graisse)": {'tr': 3500.0, 'te': 50.0, 'ti': 150.0}
+}
+
+defaults = std_params.get(seq_choix, std_params["T1 Standard"])
 
 # --- 9. SLIDERS ---
 current_reset_id = st.session_state.reset_count
@@ -103,19 +108,19 @@ bw = st.sidebar.slider("Bande Passante (Hz/px)", 50, 500, 220, step=10, key=f"bw
 es = st.sidebar.slider("TE Mini (Espacement)", 2.5, 20.0, 10.0, step=2.5, key=f"es_{current_reset_id}")
 
 # --- 10. CALCULS GLOBAUX ---
-def get_signal_val(t1, t2, pd):
-    e2 = np.exp(-te / t2)
+def calculate_signal(tr_val, te_val, ti_val, t1, t2, pd):
+    e2 = np.exp(-te_val / t2)
     val = 0.0
-    if ti > 10: 
-        val = pd * (1 - 2 * np.exp(-ti / t1) + np.exp(-tr / t1)) * e2
+    if ti_val > 10: 
+        val = pd * (1 - 2 * np.exp(-ti_val / t1) + np.exp(-tr_val / t1)) * e2
     else: 
-        val = pd * (1 - np.exp(-tr / t1)) * e2
+        val = pd * (1 - np.exp(-tr_val / t1)) * e2
     return np.abs(val)
 
-v_lcr = get_signal_val(T_LCR['T1'], T_LCR['T2'], T_LCR['PD'])
-v_wm  = get_signal_val(T_WM['T1'], T_WM['T2'], T_WM['PD']) 
-v_gm  = get_signal_val(T_GM['T1'], T_GM['T2'], T_GM['PD']) 
-v_fat = get_signal_val(T_FAT['T1'], T_FAT['T2'], T_FAT['PD'])
+v_lcr = calculate_signal(tr, te, ti, T_LCR['T1'], T_LCR['T2'], T_LCR['PD'])
+v_wm  = calculate_signal(tr, te, ti, T_WM['T1'], T_WM['T2'], T_WM['PD']) 
+v_gm  = calculate_signal(tr, te, ti, T_GM['T1'], T_GM['T2'], T_GM['PD']) 
+v_fat = calculate_signal(tr, te, ti, T_FAT['T1'], T_FAT['T2'], T_FAT['PD'])
 
 # Temps
 raw_ms = (tr * mat * nex) / turbo
@@ -124,20 +129,24 @@ mins = int(final_seconds // 60)
 secs = int(final_seconds % 60)
 str_duree = f"{mins} min {secs} s"
 
-# SNR
+# --- CALIBRATION SNR DYNAMIQUE ---
+def_tr = defaults['tr']
+def_te = defaults['te']
+def_ti = defaults['ti']
+
+ref_wm_signal = calculate_signal(def_tr, def_te, def_ti, T_WM['T1'], T_WM['T2'], T_WM['PD'])
+if ref_wm_signal < 0.0001: ref_wm_signal = 0.0001 
+
 vol_factor = (fov/float(mat))**2 * ep
 acq_factor = np.sqrt(float(mat)*float(nex)/float(turbo))
 bw_factor = np.sqrt(220.0 / float(bw))
 
-ref_wm_signal = 0.7 * (1 - np.exp(-500.0/600.0)) * np.exp(-10.0/90.0)
-s_ref = ref_wm_signal 
-if s_ref < 0.0001: s_ref = 0.0001
-r_sig = v_wm / s_ref
-
 base_vol = (240.0/256.0)**2 * 5.0
 base_acq = np.sqrt(256.0)
+
 r_vol = vol_factor / base_vol
 r_acq = acq_factor / base_acq
+r_sig = v_wm / ref_wm_signal 
 
 snr_val = r_vol * r_acq * bw_factor * r_sig * 100.0
 str_snr = f"{snr_val:.1f} %"
@@ -161,9 +170,8 @@ else: shift_pixels = 220.0 / float(bw)
 img_fat_shifted = shift(img_fat, [0, shift_pixels], mode='constant', cval=0.0)
 final = np.clip(img_water + img_fat_shifted, 0, 1.3)
 
-noise_scale = 5.0 / (snr_val + 0.1)
-if noise_scale < 0: noise_scale = 0.1
-final += np.random.normal(0, noise_scale, (S,S))
+noise_level = 5.0 / (snr_val + 20.0) 
+final += np.random.normal(0, noise_level, (S,S))
 final = np.clip(final, 0, 1.3)
 
 f = np.fft.fftshift(np.fft.fft2(final))
@@ -211,7 +219,7 @@ def apply_window_level(image, window, level):
     return np.clip((image - vmin)/(vmax - vmin), 0, 1)
 
 # --- 13. AFFICHAGE FINAL ---
-st.title("Simulateur MagnétoVault V2.86")
+st.title("Simulateur MagnétoVault V2.88")
 t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs(["Fantôme", "Espace K 🌀", "Signaux", "Codage", "🧠 Anatomie", "📈 Physique", "⚡ Chronogramme", "☣️ Artefacts"])
 
 # TAB 1
@@ -225,7 +233,6 @@ with t1:
         st.divider()
         st.subheader("📉 Rapport Signal/Bruit (SNR)")
         
-        # FORMULE CORRIGEE : Utilisation de \mathrm{} pour éviter la traduction
         st.latex(r"SNR \propto V_{vox} \times \sqrt{Acq} \times \frac{1}{\sqrt{\mathrm{BW}}}")
         st.markdown("""
         **Légende :**
@@ -280,6 +287,7 @@ with t3:
     for r in bars: ax.text(r.get_x()+r.get_width()/2, r.get_height()+0.02, f"{r.get_height():.2f}", ha='center')
     st.pyplot(fig); plt.close(fig)
 
+# TAB 4
 with t4:
     h1="<!DOCTYPE html><html><head><style>body{margin:0;padding:5px;font-family:sans-serif;} .box{display:flex;gap:15px;} .ctrl{width:220px;padding:10px;background:#f9f9f9;border:1px solid #ccc;border-radius:8px;} canvas{border:1px solid #ccc;background:#f8f9fa;border-radius:8px;} input{width:100%;} label{font-size:11px;font-weight:bold;display:block;} button{width:100%;padding:8px;background:#4f46e5;color:white;border:none;border-radius:4px;cursor:pointer;}</style></head><body><div class='box'><div class='ctrl'><h4>Codage</h4><label>Freq</label><input type='range' id='f' min='-100' max='100' value='0'><br><label>Phase</label><input type='range' id='p' min='-100' max='100' value='0'><br><label>Coupe</label><input type='range' id='z' min='-100' max='100' value='0'><br><label>Matrice</label><input type='range' id='g' min='5' max='20' value='12'><br><button onclick='rst()'>Reset</button></div><div><canvas id='c1' width='350' height='350'></canvas><canvas id='c2' width='80' height='350'></canvas></div></div>"
     h2="<script>const c1=document.getElementById('c1');const x=c1.getContext('2d');const c2=document.getElementById('c2');const z=c2.getContext('2d');const sf=document.getElementById('f');const sp=document.getElementById('p');const sz=document.getElementById('z');const sg=document.getElementById('g');const pd=30;function arrow(ctx,x,y,a,s){const l=s*0.35;ctx.save();ctx.translate(x,y);ctx.rotate(a);ctx.beginPath();ctx.moveTo(-l,0);ctx.lineTo(l,0);ctx.lineTo(l-6,-6);ctx.moveTo(l,0);ctx.lineTo(l-6,6);ctx.strokeStyle='white';ctx.lineWidth=1.5;ctx.stroke();ctx.restore();} function draw(){x.clearRect(0,0,350,350);z.clearRect(0,0,80,350);const fv=parseFloat(sf.value);const pv=parseFloat(sp.value);const zv=parseFloat(sz.value);const gs=parseInt(sg.value);const st=(350-2*pd)/gs;"
@@ -293,7 +301,7 @@ with t5:
         c1, c2 = st.columns([1, 3])
         dims = processor.get_dims()
         with c1:
-            plane = st.radio("Plan de Coupe", ["Plan Axial", "Plan Sagittal", "Plan Coronal"], key="or_286")
+            plane = st.radio("Plan de Coupe", ["Plan Axial", "Plan Sagittal", "Plan Coronal"], key="or_288")
             if "Axial" in plane: idx = st.slider("Z", 0, dims[2]-1, 90, key=f"sl_{current_reset_id}"); ax='z'
             elif "Sagittal" in plane: idx = st.slider("X", 0, dims[0]-1, 90, key=f"sl_{current_reset_id}"); ax='x'
             else: idx = st.slider("Y", 0, dims[1]-1, 100, key=f"sl_{current_reset_id}"); ax='y'
@@ -309,6 +317,7 @@ with t5:
             else: st.error("Erreur image.")
     else: st.warning("Module 'nilearn' manquant.")
 
+# TAB 6
 with t6:
     st.header("📈 Physique")
     tists = [T_FAT, T_WM, T_GM, T_LCR]
@@ -490,7 +499,7 @@ with t8:
             ax_cs.axis('off')
             st.pyplot(fig_cs, use_container_width=True)
 
-    # 3. TRONCATURE (GIBBS) - PHANTOME COMPLEXE RESTAURÉ
+    # 3. TRONCATURE (GIBBS)
     elif "Troncature" in artefact_type:
         with col_ctrl:
             with st.expander("ℹ️ Comprendre (Le Dessin Pixelisé)", expanded=True):
@@ -502,24 +511,19 @@ with t8:
             else: st.success("✅ Résolution suffisante")
             
         with col_visu:
-            # Génération locale d'un fantôme "COMPLET" haute résolution pour la démo
-            # On reprend les 4 zones (LCR, WM, GM, FAT) pour bien voir les stries aux interfaces
+            # Génération locale d'un fantôme "COMPLET" haute résolution
             S_hr = 512
             x_hr = np.linspace(-1, 1, S_hr); y_hr = np.linspace(-1, 1, S_hr)
             X_hr, Y_hr = np.meshgrid(x_hr, y_hr); D_hr = np.sqrt(X_hr**2 + Y_hr**2)
             
             img_hr = np.zeros((S_hr, S_hr))
-            # Remplissage identique au fantôme principal mais en 512x512
             img_hr[D_hr < 0.20] = v_lcr
             img_hr[(D_hr >= 0.20) & (D_hr < 0.50)] = v_wm
             img_hr[(D_hr >= 0.50) & (D_hr < 0.80)] = v_gm
             img_hr[(D_hr >= 0.80) & (D_hr < 0.95)] = v_fat
             
             k_space_hr = np.fft.fftshift(np.fft.fft2(img_hr))
-            
-            # Troncature selon le slider local
-            center = S_hr // 2
-            keep = sim_matrix // 2 
+            center = S_hr // 2; keep = sim_matrix // 2 
             mask = np.zeros_like(k_space_hr)
             mask[center-keep:center+keep, center-keep:center+keep] = 1
             k_space_truncated = k_space_hr * mask
