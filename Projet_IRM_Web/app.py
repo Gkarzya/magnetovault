@@ -8,7 +8,7 @@ import os
 from scipy.ndimage import gaussian_filter, shift
 
 # --- 1. CONFIGURATION ---
-st.set_page_config(layout="wide", page_title="Magnetovault V2.88 - Fat T2 Adjusted")
+st.set_page_config(layout="wide", page_title="Magnetovault V2.91 - T2 Curves Fix")
 
 # Imports Médicaux
 try:
@@ -25,12 +25,12 @@ def safe_rerun():
     except AttributeError:
         st.experimental_rerun()
 
-# --- 3. CONSTANTES PHYSIQUES (Ajustement V2.88) ---
-# T2 Graisse passé de 60.0 à 85.0 pour éviter une chute de signal trop rapide
-T_FAT = {'T1': 260.0, 'T2': 85.0, 'PD': 1.0, 'Label': 'Graisse'}
+# --- 3. CONSTANTES PHYSIQUES (CORRECTION V2.91) ---
+# T2 WM augmenté (100ms) et T2 Fat ajusté (80ms) pour que la Graisse décroisse plus vite
+T_FAT = {'T1': 260.0, 'T2': 80.0, 'PD': 1.0, 'Label': 'Graisse'}
 T_LCR = {'T1': 3607.0, 'T2': 2000.0, 'PD': 1.0, 'Label': 'Eau (LCR)'}
 T_GM  = {'T1': 1300.0, 'T2': 140.0, 'PD': 0.95, 'Label': 'Subst. Grise'}
-T_WM  = {'T1': 600.0,  'T2': 90.0,  'PD': 0.70, 'Label': 'Subst. Blanche'}
+T_WM  = {'T1': 600.0,  'T2': 100.0, 'PD': 0.70, 'Label': 'Subst. Blanche'}
 
 # --- 4. INITIALISATION ---
 if 'init' not in st.session_state:
@@ -70,7 +70,7 @@ except: idx_default = 0
 seq_choix = st.sidebar.selectbox("Séquence", options_seq, index=idx_default, key=seq_key)
 st.session_state.seq = seq_choix
 
-# --- 8. VALEURS PAR DÉFAUT & CALIBRATION DYNAMIQUE ---
+# --- 8. VALEURS PAR DÉFAUT ---
 std_params = {
     "T1 Standard": {'tr': 500.0, 'te': 10.0, 'ti': 0.0},
     "T2 Standard": {'tr': 4000.0, 'te': 70.0, 'ti': 0.0},
@@ -78,7 +78,6 @@ std_params = {
     "FLAIR (Eau -)": {'tr': 9000.0, 'te': 110.0, 'ti': 2500.0},
     "Séquence STIR (Graisse)": {'tr': 3500.0, 'te': 50.0, 'ti': 150.0}
 }
-
 defaults = std_params.get(seq_choix, std_params["T1 Standard"])
 
 # --- 9. SLIDERS ---
@@ -107,6 +106,23 @@ turbo = st.sidebar.slider("Facteur Turbo", 1, 32, 1, key=f"turbo_{current_reset_
 bw = st.sidebar.slider("Bande Passante (Hz/px)", 50, 500, 220, step=10, key=f"bw_{current_reset_id}", help="220 Hz = Standard 1.5T")
 es = st.sidebar.slider("TE Mini (Espacement)", 2.5, 20.0, 10.0, step=2.5, key=f"es_{current_reset_id}")
 
+# --- AJOUT MENTIONS LEGALES ---
+st.sidebar.markdown("---")
+with st.sidebar.expander("⚖️ Mentions Légales et Licence"):
+    st.markdown("""
+    **Propriété Intellectuelle**
+    Ce logiciel et les algorithmes de calcul des paramètres IRM associés sont la propriété exclusive de **MagnétoVault**. 
+    
+    **© 2025 - Tous droits réservés.**
+    
+    **Conditions d'utilisation :**
+    * **Usage :** Cette application est mise à disposition pour un usage éducatif et de recherche uniquement.
+    * **Restriction :** Toute reproduction, modification ou exploitation commerciale du code source ou de la logique métier est strictement interdite sans autorisation écrite préalable.
+    * **Avertissement :** Les résultats fournis sont issus de simulations mathématiques et ne doivent pas être utilisés pour un diagnostic clinique sans validation par un professionnel de santé certifié.
+    
+    **Contact :** magnetovault@gmail.com
+    """)
+
 # --- 10. CALCULS GLOBAUX ---
 def calculate_signal(tr_val, te_val, ti_val, t1, t2, pd):
     e2 = np.exp(-te_val / t2)
@@ -129,25 +145,19 @@ mins = int(final_seconds // 60)
 secs = int(final_seconds % 60)
 str_duree = f"{mins} min {secs} s"
 
-# --- CALIBRATION SNR DYNAMIQUE ---
-def_tr = defaults['tr']
-def_te = defaults['te']
-def_ti = defaults['ti']
-
+# SNR DYNAMIQUE
+def_tr = defaults['tr']; def_te = defaults['te']; def_ti = defaults['ti']
 ref_wm_signal = calculate_signal(def_tr, def_te, def_ti, T_WM['T1'], T_WM['T2'], T_WM['PD'])
 if ref_wm_signal < 0.0001: ref_wm_signal = 0.0001 
 
 vol_factor = (fov/float(mat))**2 * ep
 acq_factor = np.sqrt(float(mat)*float(nex)/float(turbo))
 bw_factor = np.sqrt(220.0 / float(bw))
-
 base_vol = (240.0/256.0)**2 * 5.0
 base_acq = np.sqrt(256.0)
-
 r_vol = vol_factor / base_vol
 r_acq = acq_factor / base_acq
 r_sig = v_wm / ref_wm_signal 
-
 snr_val = r_vol * r_acq * bw_factor * r_sig * 100.0
 str_snr = f"{snr_val:.1f} %"
 
@@ -219,7 +229,7 @@ def apply_window_level(image, window, level):
     return np.clip((image - vmin)/(vmax - vmin), 0, 1)
 
 # --- 13. AFFICHAGE FINAL ---
-st.title("Simulateur MagnétoVault V2.88")
+st.title("Simulateur MagnétoVault V2.91")
 t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs(["Fantôme", "Espace K 🌀", "Signaux", "Codage", "🧠 Anatomie", "📈 Physique", "⚡ Chronogramme", "☣️ Artefacts"])
 
 # TAB 1
@@ -232,7 +242,6 @@ with t1:
         st.success(f"👉 **DURÉE FINALE : {str_duree}**")
         st.divider()
         st.subheader("📉 Rapport Signal/Bruit (SNR)")
-        
         st.latex(r"SNR \propto V_{vox} \times \sqrt{Acq} \times \frac{1}{\sqrt{\mathrm{BW}}}")
         st.markdown("""
         **Légende :**
@@ -240,7 +249,6 @@ with t1:
         * **$\sqrt{Acq}$** : Facteur d'acquisition (NEX).
         * **$BW$** : **Bande Passante** (Bandwidth). Une bande passante étroite augmente le SNR.
         """)
-        
         st.table(pd.DataFrame({"Facteur": ["Volume Voxel", "Acquisition", "Bande Passante"], "Impact": [f"x {r_vol:.2f}", f"x {r_acq:.2f}", f"x {bw_factor:.2f}"]}))
         st.info(f"👉 **SNR RELATIF : {str_snr}**")
     with c2:
@@ -287,13 +295,8 @@ with t3:
     for r in bars: ax.text(r.get_x()+r.get_width()/2, r.get_height()+0.02, f"{r.get_height():.2f}", ha='center')
     st.pyplot(fig); plt.close(fig)
 
-# TAB 4
 with t4:
-    h1="<!DOCTYPE html><html><head><style>body{margin:0;padding:5px;font-family:sans-serif;} .box{display:flex;gap:15px;} .ctrl{width:220px;padding:10px;background:#f9f9f9;border:1px solid #ccc;border-radius:8px;} canvas{border:1px solid #ccc;background:#f8f9fa;border-radius:8px;} input{width:100%;} label{font-size:11px;font-weight:bold;display:block;} button{width:100%;padding:8px;background:#4f46e5;color:white;border:none;border-radius:4px;cursor:pointer;}</style></head><body><div class='box'><div class='ctrl'><h4>Codage</h4><label>Freq</label><input type='range' id='f' min='-100' max='100' value='0'><br><label>Phase</label><input type='range' id='p' min='-100' max='100' value='0'><br><label>Coupe</label><input type='range' id='z' min='-100' max='100' value='0'><br><label>Matrice</label><input type='range' id='g' min='5' max='20' value='12'><br><button onclick='rst()'>Reset</button></div><div><canvas id='c1' width='350' height='350'></canvas><canvas id='c2' width='80' height='350'></canvas></div></div>"
-    h2="<script>const c1=document.getElementById('c1');const x=c1.getContext('2d');const c2=document.getElementById('c2');const z=c2.getContext('2d');const sf=document.getElementById('f');const sp=document.getElementById('p');const sz=document.getElementById('z');const sg=document.getElementById('g');const pd=30;function arrow(ctx,x,y,a,s){const l=s*0.35;ctx.save();ctx.translate(x,y);ctx.rotate(a);ctx.beginPath();ctx.moveTo(-l,0);ctx.lineTo(l,0);ctx.lineTo(l-6,-6);ctx.moveTo(l,0);ctx.lineTo(l-6,6);ctx.strokeStyle='white';ctx.lineWidth=1.5;ctx.stroke();ctx.restore();} function draw(){x.clearRect(0,0,350,350);z.clearRect(0,0,80,350);const fv=parseFloat(sf.value);const pv=parseFloat(sp.value);const zv=parseFloat(sz.value);const gs=parseInt(sg.value);const st=(350-2*pd)/gs;"
-    h3="const h=(pd*0.8)*(fv/100);x.fillStyle='rgba(255,0,0,0.3)';if(fv!=0){x.beginPath();x.moveTo(pd,pd/2);x.lineTo(pd,pd/2-h);x.lineTo(350-pd,pd/2+h);x.lineTo(350-pd,pd/2);x.fill();}const w=(pd*0.8)*(pv/100);x.fillStyle='rgba(0,255,0,0.3)';if(pv!=0){x.beginPath();x.moveTo(350-pd/2,pd);x.lineTo(350-pd/2-w,pd);x.lineTo(350-pd/2+w,350-pd);x.lineTo(350-pd/2,350-pd);x.fill();} for(let i=0;i<gs;i++){for(let j=0;j<gs;j++){const cx=pd+i*st+st/2;const cy=pd+j*st+st/2;const ph=(i-gs/2)*(fv/100)*3+(j-gs/2)*(pv/100)*3;const cph=(j-gs/2)*(pv/100);x.strokeStyle='black';x.beginPath();x.arc(cx,cy,st*0.4,0,6.28);x.fillStyle='#94a3b8';x.fill();if(cph>0.01)x.fillStyle='rgba(255,255,0,0.5)';if(cph<-0.01)x.fillStyle='rgba(0,0,255,0.5)';x.fill();arrow(x,cx,cy,ph,st*0.6);}}"
-    h4="const yz=175-(zv/100)*150;const gr=z.createLinearGradient(0,0,0,350);gr.addColorStop(0,'red');gr.addColorStop(1,'blue');z.fillStyle=gr;z.fillRect(10,10,20,330);z.strokeStyle='black';z.lineWidth=3;z.beginPath();z.moveTo(10,yz);z.lineTo(70,yz);z.stroke();z.fillStyle='black';z.fillText('Z',35,yz-5);} [sf,sp,sz,sg].forEach(s=>s.addEventListener('input',draw));function rst(){sf.value=0;sp.value=0;sz.value=0;sg.value=12;draw();}draw();</script></body></html>"
-    components.html(h1+h2+h3+h4, height=450)
+    components.html("""<!DOCTYPE html><html><head><style>body{margin:0;padding:5px;font-family:sans-serif;} .box{display:flex;gap:15px;} .ctrl{width:220px;padding:10px;background:#f9f9f9;border:1px solid #ccc;border-radius:8px;} canvas{border:1px solid #ccc;background:#f8f9fa;border-radius:8px;} input{width:100%;} label{font-size:11px;font-weight:bold;display:block;} button{width:100%;padding:8px;background:#4f46e5;color:white;border:none;border-radius:4px;cursor:pointer;}</style></head><body><div class='box'><div class='ctrl'><h4>Codage</h4><label>Freq</label><input type='range' id='f' min='-100' max='100' value='0'><br><label>Phase</label><input type='range' id='p' min='-100' max='100' value='0'><br><label>Coupe</label><input type='range' id='z' min='-100' max='100' value='0'><br><label>Matrice</label><input type='range' id='g' min='5' max='20' value='12'><br><button onclick='rst()'>Reset</button></div><div><canvas id='c1' width='350' height='350'></canvas><canvas id='c2' width='80' height='350'></canvas></div></div><script>const c1=document.getElementById('c1');const x=c1.getContext('2d');const c2=document.getElementById('c2');const z=c2.getContext('2d');const sf=document.getElementById('f');const sp=document.getElementById('p');const sz=document.getElementById('z');const sg=document.getElementById('g');const pd=30;function arrow(ctx,x,y,a,s){const l=s*0.35;ctx.save();ctx.translate(x,y);ctx.rotate(a);ctx.beginPath();ctx.moveTo(-l,0);ctx.lineTo(l,0);ctx.lineTo(l-6,-6);ctx.moveTo(l,0);ctx.lineTo(l-6,6);ctx.strokeStyle='white';ctx.lineWidth=1.5;ctx.stroke();ctx.restore();} function draw(){x.clearRect(0,0,350,350);z.clearRect(0,0,80,350);const fv=parseFloat(sf.value);const pv=parseFloat(sp.value);const zv=parseFloat(sz.value);const gs=parseInt(sg.value);const st=(350-2*pd)/gs;const h=(pd*0.8)*(fv/100);x.fillStyle='rgba(255,0,0,0.3)';if(fv!=0){x.beginPath();x.moveTo(pd,pd/2);x.lineTo(pd,pd/2-h);x.lineTo(350-pd,pd/2+h);x.lineTo(350-pd,pd/2);x.fill();}const w=(pd*0.8)*(pv/100);x.fillStyle='rgba(0,255,0,0.3)';if(pv!=0){x.beginPath();x.moveTo(350-pd/2,pd);x.lineTo(350-pd/2-w,pd);x.lineTo(350-pd/2+w,350-pd);x.lineTo(350-pd/2,350-pd);x.fill();} for(let i=0;i<gs;i++){for(let j=0;j<gs;j++){const cx=pd+i*st+st/2;const cy=pd+j*st+st/2;const ph=(i-gs/2)*(fv/100)*3+(j-gs/2)*(pv/100)*3;const cph=(j-gs/2)*(pv/100);x.strokeStyle='black';x.beginPath();x.arc(cx,cy,st*0.4,0,6.28);x.fillStyle='#94a3b8';x.fill();if(cph>0.01)x.fillStyle='rgba(255,255,0,0.5)';if(cph<-0.01)x.fillStyle='rgba(0,0,255,0.5)';x.fill();arrow(x,cx,cy,ph,st*0.6);}}const yz=175-(zv/100)*150;const gr=z.createLinearGradient(0,0,0,350);gr.addColorStop(0,'red');gr.addColorStop(1,'blue');z.fillStyle=gr;z.fillRect(10,10,20,330);z.strokeStyle='black';z.lineWidth=3;z.beginPath();z.moveTo(10,yz);z.lineTo(70,yz);z.stroke();z.fillStyle='black';z.fillText('Z',35,yz-5);} [sf,sp,sz,sg].forEach(s=>s.addEventListener('input',draw));function rst(){sf.value=0;sp.value=0;sz.value=0;sg.value=12;draw();}draw();</script></body></html>""", height=450)
 
 with t5:
     st.header("Exploration Anatomique")
@@ -301,7 +304,7 @@ with t5:
         c1, c2 = st.columns([1, 3])
         dims = processor.get_dims()
         with c1:
-            plane = st.radio("Plan de Coupe", ["Plan Axial", "Plan Sagittal", "Plan Coronal"], key="or_288")
+            plane = st.radio("Plan de Coupe", ["Plan Axial", "Plan Sagittal", "Plan Coronal"], key="or_291")
             if "Axial" in plane: idx = st.slider("Z", 0, dims[2]-1, 90, key=f"sl_{current_reset_id}"); ax='z'
             elif "Sagittal" in plane: idx = st.slider("X", 0, dims[0]-1, 90, key=f"sl_{current_reset_id}"); ax='x'
             else: idx = st.slider("Y", 0, dims[1]-1, 100, key=f"sl_{current_reset_id}"); ax='y'
@@ -317,7 +320,6 @@ with t5:
             else: st.error("Erreur image.")
     else: st.warning("Module 'nilearn' manquant.")
 
-# TAB 6
 with t6:
     st.header("📈 Physique")
     tists = [T_FAT, T_WM, T_GM, T_LCR]
@@ -463,10 +465,14 @@ with t8:
                 ax_a.axhline(S, color='red', linestyle='--', linewidth=2)
                 style = "Simple, tail_width=0.5, head_width=4, head_length=8"
                 kw = dict(arrowstyle=style, color="orange")
-                ax_a.add_patch(patches.FancyArrowPatch((S/2, -20), (S/2, 20), connectionstyle="arc3,rad=.5", **kw))
-                ax_a.add_patch(patches.FancyArrowPatch((S/2, S+20), (S/2, S-20), connectionstyle="arc3,rad=.5", **kw))
-                ax_a.text(S/2, 40, "Aliasing", color='orange', ha='center', fontsize=9, fontweight='bold')
-                ax_a.text(S/2, S-40, "Aliasing", color='orange', ha='center', fontsize=9, fontweight='bold')
+                # FLECHES INVERSEES POUR MONTRER L'ENTREE DANS L'IMAGE
+                # Fleche Haut (qui vient de l'arrière/bas)
+                ax_a.add_patch(patches.FancyArrowPatch((S/2, -30), (S/2, 10), **kw))
+                # Fleche Bas (qui vient de l'avant/haut)
+                ax_a.add_patch(patches.FancyArrowPatch((S/2, S+30), (S/2, S-10), **kw))
+                
+                ax_a.text(S/2, 20, "Vient de l'Arrière (Bas)", color='orange', ha='center', fontsize=9, fontweight='bold')
+                ax_a.text(S/2, S-20, "Vient de l'Avant (Haut)", color='orange', ha='center', fontsize=9, fontweight='bold')
             
             ax_a.axis('off')
             st.pyplot(fig_a, use_container_width=True)
