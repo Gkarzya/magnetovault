@@ -8,8 +8,8 @@ import os
 from scipy.ndimage import gaussian_filter, shift, sobel, zoom, binary_erosion, binary_dilation
 
 # --- 1. CONFIGURATION ET CSS ---
-# MISE A JOUR VERSION 736 - JS RELOAD & FAT LABEL
-st.set_page_config(layout="wide", page_title="Magnetovault V7.36 - Hard Reset")
+# VERSION 741 - BASE V736 + GITHUB PATH FIX
+st.set_page_config(layout="wide", page_title="Magnetovault V7.41 - Stable GitHub")
 
 st.markdown("""
     <style>
@@ -105,16 +105,19 @@ if 'init' not in st.session_state:
     st.session_state.init = True
 
 # --- 5. BARRE LATÉRALE ---
-dossier_actuel = os.path.dirname(os.path.abspath(__file__))
-chemin_logo = os.path.join(dossier_actuel, "logo_mia.png")
-if os.path.exists(chemin_logo): st.sidebar.image(chemin_logo, width=280)
+# [MODIFICATION CHIRURGICALE] Calcul des chemins absolus pour GitHub
+current_dir = os.path.dirname(os.path.abspath(__file__))
+logo_path = os.path.join(current_dir, "logo_mia.png")
+image_asl_path = os.path.join(current_dir, "image_028fa1.jpg")
+
+# Utilisation du chemin absolu pour le logo
+if os.path.exists(logo_path): 
+    st.sidebar.image(logo_path, width=280)
 
 st.sidebar.title("Réglages Console")
 
 # --- BOUTON RESET (HARD RELOAD JS) ---
-# C'est ici que la magie opère pour rafraîchir la page
 if st.sidebar.button("⚠️ Reset Complet (Rafraîchir)"):
-    # Injection de JavaScript pour forcer le rechargement de la page
     components.html("<script>window.parent.location.reload();</script>", height=0)
 
 # --- SÉLECTION SÉQUENCE ---
@@ -149,9 +152,15 @@ if seq_choix != st.session_state.seq:
     st.session_state.seq = seq_choix
     new_tr = float(defaults['tr'])
     st.session_state.tr_force = new_tr
-    st.session_state['widget_tr'] = new_tr 
+    # Mise à jour directe du widget pour éviter la persistance
+    if 'widget_tr' in st.session_state: 
+        st.session_state.widget_tr = new_tr
+    
+    # Gestion du TE (On supprime l'ancien pour forcer la mise à jour)
     te_key = f"te_main_{st.session_state.reset_count}"
-    st.session_state[te_key] = float(defaults['te'])
+    if te_key in st.session_state:
+        del st.session_state[te_key]
+        
     safe_rerun()
 
 is_gre = "Gradient" in seq_choix
@@ -161,8 +170,10 @@ is_swi = "SWI" in seq_choix
 is_mprage = "MP-RAGE" in seq_choix
 is_asl = "ASL" in seq_choix
 
-# Initialisation
-def_tr = defaults['tr']; def_te = defaults['te']; def_ti = defaults['ti']
+# Initialisation (REMISE EN PLACE POUR EVITER NameError)
+def_tr = defaults['tr']
+def_te = defaults['te']
+def_ti = defaults['ti']
 current_reset_id = st.session_state.reset_count
 ti = 0.0
 te = float(defaults['te'])
@@ -185,6 +196,7 @@ mat = st.sidebar.select_slider("Matrice", options=[64, 128, 256, 512], value=256
 
 st.sidebar.subheader("Réglage Echo")
 if not (is_dwi or is_asl):
+    # Le slider TE utilise la clé dynamique pour être réinitialisable
     te = st.sidebar.slider("TE (ms)", 1.0, 300.0, float(defaults['te']), step=1.0, key=f"te_main_{current_reset_id}")
 else:
     te = 90.0 if is_dwi else 15.0
@@ -222,8 +234,18 @@ elif is_asl:
     st.session_state.atrophy_active = st.sidebar.checkbox("Atrophie", st.session_state.atrophy_active, key=f"asl_atr_{current_reset_id}")
     show_atrophy = st.session_state.atrophy_active
 else:
-    tr = st.sidebar.slider("TR (ms)", min_value=10.0, max_value=12000.0, value=float(st.session_state.tr_force), step=10.0, key="widget_tr", on_change=update_tr_from_slider)
-    if tr != st.session_state.tr_force: st.session_state.tr_force = tr
+    # --- SLIDER TR ---
+    tr = st.sidebar.slider(
+        "TR (ms)", 
+        min_value=10.0, 
+        max_value=12000.0, 
+        value=float(st.session_state.tr_force), 
+        step=10.0, 
+        key="widget_tr", 
+        on_change=update_tr_from_slider
+    )
+    if tr != st.session_state.tr_force:
+        st.session_state.tr_force = tr
 
     if auto_adjusted:
         st.sidebar.markdown(f"""<div class="tr-alert-box">⚠️ TR ajusté auto<br>({int(min_tr_required)}ms) pour {n_slices} coupes.</div>""", unsafe_allow_html=True)
@@ -491,8 +513,7 @@ class AdvancedMRIProcessor:
 processor = AdvancedMRIProcessor()
 
 # --- 13. AFFICHAGE FINAL ---
-# MISE A JOUR VERSION 736
-st.title("Simulateur MagnétoVault V7.36")
+st.title("Simulateur MagnétoVault V7.41")
 
 # Démarrage des Onglets
 t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12, t13, t14 = st.tabs([
@@ -557,8 +578,7 @@ with t1:
         ax_anot.text(S/2, S/2, "Eau\n(LCR)", color='white', ha='center', va='center', fontsize=9, fontweight='bold')
         ax_anot.text(S/2, S/2 + (S*0.35/2), "SB", color='black', ha='center', va='center', fontsize=9, fontweight='bold')
         ax_anot.text(S/2, S/2 + (S*0.65/2), "SG", color='white', ha='center', va='center', fontsize=9, fontweight='bold')
-        # MODIF V736 : AJOUT LABEL GRAISSE (FAT)
-        ax_anot.text(S/2, S*0.92, "FAT", color='orange', ha='center', va='center', fontsize=9, fontweight='bold')
+        ax_anot.text(S/2, S*0.93, "FAT", color='orange', ha='center', va='center', fontsize=10, fontweight='bold')
         st.pyplot(fig_anot); plt.close(fig_anot)
 
 with t2:
@@ -986,6 +1006,7 @@ with t11:
 with t12:
     st.header("🩸 Séquence SWI (Susceptibility Weighted Imaging)")
     
+    # 1. Principe ASL (MODIF V738 : Image Externe Path Robuste)
     st.subheader("1. 🧲 Le Laboratoire du Dipôle")
     
     col_dip_ctrl, col_dip_visu = st.columns([1, 3])
@@ -1126,23 +1147,24 @@ with t13:
         ax_mp.set_ylim(-1.0, 1.5); ax_mp.set_xlabel("Temps (ms)"); ax_mp.get_yaxis().set_visible(False); ax_mp.legend(loc='upper right')
         st.pyplot(fig_mp)
 
-# [NOUVEL ONGLET 14 : ASL - MODIFIE V730 (IMAGE)]
+# [NOUVEL ONGLET 14 : ASL - MODIFIE V738 (PATH ROBUSTE)]
 with t14:
     st.header("🩸 Perfusion ASL (Arterial Spin Labeling)")
     
-    # 1. Principe ASL (MODIF V730 : Image Externe)
+    # 1. Principe ASL (MODIF V738 : Image Externe Path Robuste)
     st.subheader("1. Principe de la Technique")
     c_principe, c_texte = st.columns([1, 1])
     with c_principe:
-        # Code modifié pour charger l'image utilisateur
-        image_asl_path = "image_028fa1.jpg"
+        # Code "Golden Fix" pour charger l'image utilisateur
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        image_asl_path = os.path.join(current_dir, "image_028fa1.jpg")
+        
         if os.path.exists(image_asl_path):
             st.image(image_asl_path, caption="Principe ASL : Marquage et Acquisition", use_container_width=True)
         else:
             # Fallback en cas d'oubli de l'image (Affiche une erreur utile)
-            st.error(f"Image '{image_asl_path}' introuvable. Veuillez placer le fichier dans le même dossier que ce script.")
-            # On laisse un espace vide ou on met un placeholder
-            st.markdown("*L'image du schéma apparaîtra ici une fois le fichier ajouté.*")
+            st.error(f"Image introuvable au chemin : {image_asl_path}")
+            st.markdown(f"*Vérifiez que le fichier 'image_028fa1.jpg' est bien dans le dossier : {current_dir}*")
 
     with c_texte:
         st.markdown("""
