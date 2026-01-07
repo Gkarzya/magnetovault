@@ -8,8 +8,8 @@ import os
 from scipy.ndimage import gaussian_filter, shift, sobel, zoom, binary_erosion, binary_dilation
 
 # --- 1. CONFIGURATION ET CSS ---
-# VERSION 741 - BASE V736 + GITHUB PATH FIX
-st.set_page_config(layout="wide", page_title="Magnetovault V7.41 - Stable GitHub")
+# VERSION 7.42 - CORRECTION T2 (TR 4000 / TE 85) + FIX PERSISTANCE TE
+st.set_page_config(layout="wide", page_title="Magnetovault V7.42 - Fixed T2")
 
 st.markdown("""
     <style>
@@ -105,7 +105,7 @@ if 'init' not in st.session_state:
     st.session_state.init = True
 
 # --- 5. BARRE LATÉRALE ---
-# [MODIFICATION CHIRURGICALE] Calcul des chemins absolus pour GitHub
+# Calcul des chemins absolus pour GitHub
 current_dir = os.path.dirname(os.path.abspath(__file__))
 logo_path = os.path.join(current_dir, "logo_mia.png")
 image_asl_path = os.path.join(current_dir, "image_028fa1.jpg")
@@ -132,10 +132,11 @@ try: idx_def = options_seq.index(st.session_state.seq)
 except: idx_def = 0
 seq_choix = st.sidebar.selectbox("Séquence", options_seq, index=idx_def, key=seq_key)
 
-# VALEURS PAR DÉFAUT
+# VALEURS PAR DÉFAUT [MODIFICATION V7.42]
 std_params = {
     "Pondération T1": {'tr': 500.0, 'te': 10.0, 'ti': 0.0},
-    "Pondération T2": {'tr': 4500.0, 'te': 85.0, 'ti': 0.0},
+    # ICI : TR passé à 4000.0 pour T2 standard
+    "Pondération T2": {'tr': 4000.0, 'te': 85.0, 'ti': 0.0},
     "Écho de Gradient (T2*)": {'tr': 150.0, 'te': 20.0, 'ti': 0.0}, 
     "Diffusion (DWI)": {'tr': 6000.0, 'te': 90.0, 'ti': 0.0},
     "DP (Densité Protons)": {'tr': 2200.0, 'te': 30.0, 'ti': 0.0},
@@ -147,19 +148,20 @@ std_params = {
 }
 defaults = std_params.get(seq_choix, std_params["Pondération T1"])
 
-# --- LOGIQUE DE CHANGEMENT DE SEQUENCE (FORCE TR/TE) ---
+# --- LOGIQUE DE CHANGEMENT DE SEQUENCE (CORRECTIF PERSISTANCE TE) ---
 if seq_choix != st.session_state.seq:
     st.session_state.seq = seq_choix
+    
+    # 1. Mise à jour du TR
     new_tr = float(defaults['tr'])
     st.session_state.tr_force = new_tr
-    # Mise à jour directe du widget pour éviter la persistance
     if 'widget_tr' in st.session_state: 
         st.session_state.widget_tr = new_tr
     
-    # Gestion du TE (On supprime l'ancien pour forcer la mise à jour)
-    te_key = f"te_main_{st.session_state.reset_count}"
-    if te_key in st.session_state:
-        del st.session_state[te_key]
+    # 2. Mise à jour du TE (Force l'écriture dans le session_state)
+    new_te = float(defaults['te'])
+    te_key_current = f"te_main_{st.session_state.reset_count}"
+    st.session_state[te_key_current] = new_te
         
     safe_rerun()
 
@@ -170,7 +172,7 @@ is_swi = "SWI" in seq_choix
 is_mprage = "MP-RAGE" in seq_choix
 is_asl = "ASL" in seq_choix
 
-# Initialisation (REMISE EN PLACE POUR EVITER NameError)
+# Initialisation
 def_tr = defaults['tr']
 def_te = defaults['te']
 def_ti = defaults['ti']
@@ -513,7 +515,7 @@ class AdvancedMRIProcessor:
 processor = AdvancedMRIProcessor()
 
 # --- 13. AFFICHAGE FINAL ---
-st.title("Simulateur MagnétoVault V7.41")
+st.title("Simulateur MagnétoVault V7.42")
 
 # Démarrage des Onglets
 t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12, t13, t14 = st.tabs([
