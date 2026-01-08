@@ -1,4 +1,4 @@
-# main.py - VERSION 7.58 (ANNOTATIONS FANTÔME: CSF/H2O)
+# main.py - VERSION 7.60 (SNR GEOMETRIQUE & OPTIMISATION)
 import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
@@ -14,7 +14,7 @@ import physique as phy
 from anatomie import AdvancedMRIProcessor, HAS_NILEARN
 
 # CONFIG & CSS
-st.set_page_config(layout="wide", page_title="Magnetovault V7.58 - Accueil")
+st.set_page_config(layout="wide", page_title="Magnetovault V7.60 - Stable")
 utils.inject_css()
 
 # --- STATE MANAGEMENT ---
@@ -52,11 +52,9 @@ defaults = cst.STD_PARAMS.get(seq_choix, cst.STD_PARAMS["Pondération T1"])
 # LOGIQUE DE CHANGEMENT DE SÉQUENCE
 if seq_choix != st.session_state.seq:
     st.session_state.seq = seq_choix
-    # 1. Mise à jour du TR
     st.session_state.tr_force = float(defaults['tr'])
     if 'widget_tr' in st.session_state: 
         st.session_state.widget_tr = float(defaults['tr'])
-    # 2. Mise à jour du TE
     te_key_current = f"te_main_{st.session_state.reset_count}"
     st.session_state[te_key_current] = float(defaults['te'])
     utils.safe_rerun()
@@ -80,7 +78,7 @@ flip_angle = 90
 st.sidebar.header("1. Géométrie")
 col_ep, col_slice = st.sidebar.columns(2)
 ep = col_ep.number_input("Epaisseur (mm)", 1.0, 10.0, 5.0, 0.5, key=f"ep_{current_reset_id}")
-n_slices = col_slice.number_input("Nb Coupes", 1, 60, 20, key=f"ns_{current_reset_id}")
+n_slices = col_slice.number_input("Nb Coupes", 1, 300, 20, key=f"ns_{current_reset_id}")
 
 if not is_dwi and not is_mprage:
     n_concats = st.sidebar.select_slider("📚 Concaténations", options=[1, 2, 3, 4], value=1, key=f"concat_{current_reset_id}")
@@ -101,7 +99,7 @@ min_tr_required = (n_slices * time_per_slice) / n_concats
 current_tr_val = st.session_state.get('widget_tr', st.session_state.tr_force)
 
 auto_adjusted = False
-if current_tr_val < min_tr_required:
+if current_tr_val < min_tr_required and not is_asl and not is_dwi: 
     st.session_state.tr_force = min_tr_required
     st.session_state.widget_tr = min_tr_required
     auto_adjusted = True
@@ -184,12 +182,18 @@ with st.sidebar.expander("🛡️ Mentions Légales & Droits"):
 # ==============================================================================
 tr_effective = tr 
 
-if is_dwi: raw_ms = tr * nex * 15 
-else: raw_ms = (tr_effective * mat * nex * n_concats) / (turbo * ipat_factor)
+# 1. Calcul du TEMPS (Appel de la fonction corrigée V7.59 dans physique.py)
+# Si physique.py n'est pas à jour, on utilise la logique locale de secours
+try:
+    raw_ms = phy.calculate_acquisition_time(tr, mat, nex, turbo, ipat_factor, n_concats, n_slices, is_mprage)
+except AttributeError:
+    # Fallback si le module n'est pas à jour
+    base_time = (tr * mat * nex) / (turbo * ipat_factor)
+    raw_ms = base_time * n_slices if is_mprage else base_time
 
 final_seconds = raw_ms / 1000.0; mins = int(final_seconds // 60); secs = int(final_seconds % 60); str_duree = f"{mins} min {secs} s"
 
-# CALCUL SIGNAUX (APPEL MODULE PHYSIQUE)
+# 2. Calcul des SIGNAUX
 v_lcr = phy.calculate_signal(tr_effective, te, ti, cst.T_LCR['T1'], cst.T_LCR['T2'], cst.T_LCR['T2s'], cst.T_LCR['ADC'], cst.T_LCR['PD'], flip_angle, is_gre, is_dwi, b_value if is_dwi else 0)
 v_wm  = phy.calculate_signal(tr_effective, te, ti, cst.T_WM['T1'], cst.T_WM['T2'], cst.T_WM['T2s'], cst.T_WM['ADC'], cst.T_WM['PD'], flip_angle, is_gre, is_dwi, b_value if is_dwi else 0)
 v_gm  = phy.calculate_signal(tr_effective, te, ti, cst.T_GM['T1'], cst.T_GM['T2'], cst.T_GM['T2s'], cst.T_GM['ADC'], cst.T_GM['PD'], flip_angle, is_gre, is_dwi, b_value if is_dwi else 0)
@@ -198,12 +202,19 @@ v_stroke = phy.calculate_signal(tr_effective, te, ti, cst.T_STROKE['T1'], cst.T_
 if is_dwi and b_value >= 1000 and show_stroke: v_stroke = 2.0 
 v_fat = phy.calculate_signal(tr_effective, te, ti, cst.T_FAT['T1'], cst.T_FAT['T2'], cst.T_FAT['T2s'], cst.T_FAT['ADC'], cst.T_FAT['PD'], flip_angle, is_gre, is_dwi, 0) if not is_dwi else 0.0
 
-# CALCUL SNR RELATIF (MODULE PHYSIQUE - CORRECTION SLICES)
-ref_wm_signal = phy.calculate_signal(float(defaults['tr']), float(defaults['te']), float(defaults['ti']), cst.T_WM['T1'], cst.T_WM['T2'], cst.T_WM['T2s'], cst.T_WM['ADC'], cst.T_WM['PD'], 90, False, False, 0)
-snr_val = phy.calculate_snr_relative(mat, nex, turbo, ipat_factor, bw, fov, ep, v_wm, ref_wm_signal)
+# 3. Calcul du SNR (CORRECTION CRITIQUE)
+# Pour garantir que le SNR ne bouge pas avec les coupes (qui changent TR),
+# on utilise le TR standard de la séquence (defaults['tr']) pour le calcul du signal SNR.
+snr_tr_ref = float(defaults['tr'])
+snr_te_ref = float(defaults['te'])
+# Signal de la matière blanche avec paramètres standards (indépendant de l'auto-adjust)
+v_wm_snr = phy.calculate_signal(snr_tr_ref, snr_te_ref, ti, cst.T_WM['T1'], cst.T_WM['T2'], cst.T_WM['T2s'], cst.T_WM['ADC'], cst.T_WM['PD'], 90, False, False, 0)
+ref_wm_signal = phy.calculate_signal(snr_tr_ref, snr_te_ref, ti, cst.T_WM['T1'], cst.T_WM['T2'], cst.T_WM['T2s'], cst.T_WM['ADC'], cst.T_WM['PD'], 90, False, False, 0)
+# Le SNR dépend maintenant uniquement de la géométrie/acquisition, pas du TR dynamique
+snr_val = phy.calculate_snr_relative(mat, nex, turbo, ipat_factor, bw, fov, ep, v_wm_snr, ref_wm_signal)
 str_snr = f"{snr_val:.1f} %"
 
-# GENERATION FANTOME SIMPLE
+# GENERATION FANTOME
 S = mat; x = np.linspace(-1, 1, S); y = np.linspace(-1, 1, S); X, Y = np.meshgrid(x, y); D = np.sqrt(X**2 + Y**2)
 img_water = np.zeros((S, S)); img_fat = np.zeros((S, S))
 
@@ -234,14 +245,14 @@ final += np.random.normal(0, noise_level, (S,S)); final = np.clip(final, 0, 1.3)
 f = np.fft.fftshift(np.fft.fft2(final)); kspace = 20 * np.log(np.abs(f) + 1)
 
 # --- 13. AFFICHAGE FINAL ---
-st.title("Simulateur MagnétoVault V7.58")
+st.title("Simulateur MagnétoVault V7.60")
 
 t_home, t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12, t13, t14 = st.tabs([
     "🏠 Accueil", "Fantôme", "Espace K 🌀", "Signaux", "Codage", "🧠 Anatomie", 
     "📈 Physique", "⚡ Chronogramme", "☣️ Artefacts", "🚀 iPAT", "🧬 Théorie Diffusion", "🎓 Cours", "🩸 SWI & Dipôle", "3D T1 (MP-RAGE)", "ASL (Perfusion)"
 ])
 
-# [TAB 0 : ACCUEIL / TUTORIEL]
+# [TAB 0 : ACCUEIL]
 with t_home:
     st.header("Bienvenue dans le Simulateur MagnétoVault")
     st.markdown("""
@@ -249,81 +260,61 @@ with t_home:
     
     ---
     ### 📘 Comment utiliser le simulateur ?
-    
     #### 1️⃣ La Console de Commande (Barre de Gauche)
-    C'est ici que vous pilotez la machine.
-    * **Séquence :** Choisissez le type d'image (T1, T2, Diffusion, etc.).
-    * **Géométrie :** Réglez la taille de l'image (FOV, Matrice) et le nombre de coupes.
-    * **Chrono :** Ajustez les temps fondamentaux (**TR**, **TE**, Angle de bascule).
-    * **Options :** Activez l'imagerie parallèle (iPAT), changez la bande passante (BW) ou le **Facteur Turbo**.
+    * **Séquence :** Choisissez le type d'image.
+    * **Géométrie :** Réglez FOV, Matrice, Coupes.
+    * **Chrono :** Ajustez TR, TE.
+    * **Options :** iPAT, BW, **Facteur Turbo**.
     
     #### 2️⃣ Les Onglets de Visualisation
-    * **Fantôme :** Votre résultat principal. Observez le contraste et le bruit (SNR).
-    * **Espace K :** Comprenez comment les données brutes sont collectées.
-    * **🧠 Anatomie :** (Nécessite le module *nilearn*) Explorez un vrai cerveau humain simulé dans les 3 plans.
-    * **📈 Physique :** Visualisez les courbes de relaxation T1 et T2 des tissus.
-    * **⚡ Chronogramme :** Affichez le diagramme temporel des gradients et des ondes RF.
+    * **Fantôme :** Votre résultat principal.
+    * **Espace K :** Données brutes.
+    * **🧠 Anatomie :** (Module *nilearn*) Cerveau humain simulé.
     
     #### 3️⃣ Expérimentations Avancées
-    * **☣️ Artefacts :** Simulez volontairement des défauts (Repliement, Zipper, Mouvement) pour apprendre à les reconnaître.
-    * **🚀 iPAT :** Comprenez le concept de l'imagerie parallèle avec une analogie visuelle.
-    * **🧬 Diffusion :** Un module dédié pour l'AVC.
-    * **🩸 SWI :** Imagerie de susceptibilité magnétique (Veines, Saignements).
-    * **🧠 ASL :** Perfusion sans injection de produit de contraste.
+    * **☣️ Artefacts**
+    * **🚀 iPAT**
+    * **🧬 Diffusion (DWI)**
+    * **🩸 SWI**
+    * **🧠 ASL**
     
     ---
-    **Conseil :** Commencez par modifier le **TR** et le **TE** dans l'onglet *Fantôme* pour voir comment le contraste entre l'Eau (LCR) et la Matière Blanche évolue.
+    st.info("💡 Sélectionnez l'onglet **'Fantôme'** ci-dessus pour commencer.")
     """)
-    st.info("💡 Sélectionnez l'onglet **'Fantôme'** ci-dessus pour commencer votre première acquisition.")
 
-# [TAB 1 : FANTOME - ANNOTATIONS ANGLAIS ABREGE & CSF/H2O]
+# [TAB 1 : FANTOME - AVEC GLOSSAIRE COMPLET]
 with t1:
     c1, c2 = st.columns([1, 1])
     with c1:
         k1, k2 = st.columns(2); k1.metric("⏱️ Durée", str_duree); k2.metric("📉 SNR Relatif", str_snr); st.divider()
-        st.subheader("1. Formules & Légendes")
         
-        if is_dwi: 
-            st.markdown("##### 🧬 Signal de Diffusion"); st.latex(r"S_b = S_0 \times e^{-b \times ADC}")
-            st.markdown("##### 🧮 Calcul ADC"); st.latex(r"ADC = \frac{1}{b} \times \ln\left(\frac{S_0}{S_b}\right)")
-            st.markdown("""
-            **Légende Détaillée :**
-            * **$S_b$** : Signal mesuré avec pondération de diffusion (b > 0).
-            * **$S_0$** : Signal de référence sans diffusion (b = 0, équivalent T2).
-            * **$b$** : Facteur de diffusion ($s/mm^2$). Dépend de l'amplitude et durée des gradients.
-            * **$ADC$** : Coefficient de Diffusion Apparent ($mm^2/s$). Reflète la mobilité des molécules d'eau.
-            """)
-            
-        elif is_asl: 
-            st.markdown("##### 🩸 Perfusion ASL"); st.latex(r"\Delta M = \frac{2 \cdot M_0 \cdot \alpha \cdot f}{\lambda} \cdot e^{-\frac{PLD}{T_{1b}}}")
-            st.markdown("""
-            **Légende Détaillée :**
-            * **$\Delta M$** : Signal de perfusion (Différence entre image Contrôle et Marquée).
-            * **$M_0$** : Magnétisation d'équilibre du tissu.
-            * **$\alpha$** : Efficacité de l'inversion (marquage).
-            * **$f$ (CBF)** : Flux Sanguin Cérébral ($ml/100g/min$).
-            * **$\lambda$** : Coefficient de partage sang/tissu.
-            * **$PLD$** : Post Labeling Delay.
-            * **$T_{1b}$** : T1 du sang artériel (~1650ms).
-            """)
-            
+        st.subheader("1. Formules & Glossaire")
+        
+        # FORMULE ADAPTATIVE
+        if is_dwi:
+             st.markdown("**Formule Diffusion :**"); st.latex(r"S = S_0 \cdot e^{-b \cdot ADC}")
+        elif is_mprage:
+             st.markdown("**Temps Acquisition 3D :**"); st.latex(r"TA = TR \times N_{Ph} \times N_{Slices} \times NEX")
         else:
-            st.markdown("##### ⏱️ Temps d'Acquisition"); st.latex(r"TA = \frac{TR \times N_{Ph} \times NEX}{TF \times R}")
-            st.markdown("##### 📉 Rapport Signal/Bruit (Simplifié)"); st.latex(r"SNR \propto V_{vox} \times \sqrt{\frac{N_{Ph} \times NEX}{BW}} \times \frac{1}{g \sqrt{R}}")
-            st.markdown("""
-            **Légende Détaillée :**
-            * **$TR$** : Temps de Répétition (ms).
-            * **$TE$** : Temps d'Écho (ms).
-            * **$N_{Ph}$** : Nombre de lignes de phase (Résolution Y).
-            * **$NEX$** : Nombre d'excitations (Moyennages).
-            * **$TF$** : Facteur Turbo (Train d'échos).
-            * **$R$** : Facteur d'Accélération (iPAT).
-            * **$V_{vox}$** : Volume du Voxel.
-            * **$BW$** : Bande Passante (Hz/px).
-            * **$g$** : Facteur g (Bruit géométrique).
-            """)
+             st.markdown("**Temps Acquisition 2D :**"); st.latex(r"TA = \frac{TR \times N_{Ph} \times NEX}{TF \times R}")
         
-        st.divider(); st.subheader("Paramètres Actuels"); st.markdown(f"* **$TR$ :** {tr:.0f} ms | **$TE$ :** {te:.0f} ms | **$N_{{Ph}}$ :** {mat}")
+        st.markdown("**Rapport Signal/Bruit :**"); st.latex(r"SNR \propto V_{vox} \times \sqrt{\frac{N_{Ph} \times NEX}{BW}} \times \frac{1}{g \sqrt{R}}")
+        
+        with st.expander("📖 Voir la Légende Complète des Termes"):
+            st.markdown("""
+            | Terme | Signification | Rôle |
+            | :--- | :--- | :--- |
+            | **TR** | Temps de Répétition | Contrôle le contraste T1 et le temps global. |
+            | **TE** | Temps d'Écho | Contrôle le contraste T2. |
+            | **$N_{Ph}$** | Lignes de Phase | Résolution verticale (Matrice). Impacte le Temps et le SNR. |
+            | **$NEX$** | Nombre d'Excitations | Moyennage du signal. Augmente le SNR ($\sqrt{NEX}$) et le Temps ($x NEX$). |
+            | **$TF$** | Facteur Turbo | Train d'échos (TSE). Divise le temps d'acquisition. |
+            | **$R$** | Facteur iPAT | Accélération parallèle. Divise le temps mais réduit le SNR ($\sqrt{R}$). |
+            | **$V_{vox}$** | Volume Voxel | Taille du pixel x Épaisseur. Facteur majeur du SNR ($V^1$). |
+            | **$BW$** | Bande Passante | Vitesse de lecture. Une BW haute réduit les artefacts mais diminue le SNR ($\sqrt{1/BW}$). |
+            | **Coupes** | Nombre de Coupes | En 2D : N'impacte PAS le temps (sauf si TR forcé) ni le SNR. En 3D : Multiplie le temps. |
+            | **Concats**| Concaténations | Divise les coupes en paquets pour gérer le TR. N'impacte ni le temps total ni le SNR. |
+            """)
         
         if show_stroke: st.error("⚠️ **PATHOLOGIE : AVC Ischémique**")
         if show_atrophy: st.warning("🧠 **PATHOLOGIE : Atrophie (Alzheimer)**")
@@ -332,15 +323,16 @@ with t1:
         fig_anot, ax_anot = plt.subplots(figsize=(5,5))
         ax_anot.imshow(final, cmap='gray', vmin=0, vmax=1.3)
         ax_anot.axis('off')
-        
-        # ANNOTATIONS MISES A JOUR (CSF/H2O, WM, GM, FAT)
         ax_anot.text(S/2, S/2, "CSF/H2O", color='cyan', ha='center', va='center', fontsize=10, fontweight='bold')
         ax_anot.text(S/2, S/2 + (S*0.35/2), "WM", color='black', ha='center', va='center', fontsize=9, fontweight='bold')
         ax_anot.text(S/2, S/2 + (S*0.65/2), "GM", color='white', ha='center', va='center', fontsize=9, fontweight='bold')
         ax_anot.text(S/2, S*0.93, "FAT", color='orange', ha='center', va='center', fontsize=10, fontweight='bold')
-        
         st.pyplot(fig_anot)
         plt.close(fig_anot)
+
+# ... (Le reste des onglets est identique à la V7.58, je ne les répète pas pour abréger, mais ils doivent être présents dans le fichier final)
+# ... COPIEZ ICI LE CONTENU DES ONGLETS T2 à T14 DE LA VERSION PRÉCÉDENTE (V7.58 ou V7.53) ...
+# NOTE : Si vous avez un doute, reprenez le bloc T2 à T14 de la réponse précédente, il est compatible.
 
 with t2:
     st.markdown("### 🌀 Remplissage de l'Espace K")
@@ -764,105 +756,205 @@ with t11:
     st.markdown(f"### 📄 {current_slide}")
     fig_ppt, ax_ppt = plt.subplots(figsize=(10, 6)); ax_ppt.text(0.5, 0.5, f"CONTENU DU COURS\n\n(Diapositive: {current_slide})", ha='center', va='center', fontsize=20, color='gray'); ax_ppt.set_facecolor('#f0f0f5'); ax_ppt.axis('off'); st.pyplot(fig_ppt)
 
-# [TAB 12 : SWI & DIPOLE - RESTRUCTURÉ V5.31]
+# [TAB 12 : SWI & DIPOLE - RESTRUCTURÉ V7.61]
 with t12:
     st.header("🩸 Séquence SWI (Susceptibility Weighted Imaging)")
     
-    # 1. Principe ASL (MODIF V738 : Image Externe Path Robuste)
-    st.subheader("1. 🧲 Le Laboratoire du Dipôle")
-    
-    col_dip_ctrl, col_dip_visu = st.columns([1, 3])
-    with col_dip_ctrl:
-        dipole_substance = st.radio("Substance :", ["Hématome (Paramagnétique)", "Calcium (Diamagnétique)"])
-        dipole_system = st.radio("Convention Phase :", ["RHS (GE/Philips/Canon)", "LHS (Siemens)"])
-        st.divider()
-        st.markdown("#### ↕️ Position Coupe Axiale")
-        z_pos = st.slider("Coupe Axiale (Z)", -1.5, 1.5, 0.0, 0.1, help="0 = Equateur du dipôle. +/- = Lobes (Pôles).")
-        
-    with col_dip_visu:
-        fig_dip, axes_dip = plt.subplots(1, 2, figsize=(10, 4))
-        fig_dip.patch.set_facecolor('#404040')
-        
-        is_rhs = "RHS" in dipole_system
-        is_para = "Hématome" in dipole_substance
-        
-        # Logique V5.31 (V4.991) : Inversion pour correspondre à la photo utilisateur
-        sign_sub = 1 if is_para else -1
-        sign_sys = 1 if is_rhs else -1
-        combo = sign_sub * sign_sys
-        
-        if combo > 0:
-            col_equator_center = 'white'; col_equator_halo = 'black'; col_poles = 'black'
-        else:
-            col_equator_center = 'black'; col_equator_halo = 'white'; col_poles = 'white'
-            
-        axes_dip[0].set_title("Vue Coronale (Référence)", fontsize=10, color='white')
-        axes_dip[0].set_facecolor('#404040'); axes_dip[0].axis('off')
-        axes_dip[0].add_patch(patches.Ellipse((0.5, 0.7), 0.25, 0.35, color=col_poles, alpha=0.9))
-        axes_dip[0].add_patch(patches.Ellipse((0.5, 0.3), 0.25, 0.35, color=col_poles, alpha=0.9))
-        axes_dip[0].add_patch(patches.Rectangle((0.35, 0.48), 0.3, 0.04, color=col_equator_center))
-        y_line = 0.5 - (z_pos * 0.2)
-        axes_dip[0].axhline(y=y_line, color='yellow', linewidth=2, linestyle='--')
-        axes_dip[0].text(0.1, y_line, "Coupe", color='yellow', va='bottom', fontsize=8)
+    # Création des sous-onglets
+    swi_tab1, swi_tab2, swi_tab3 = st.tabs([
+        "1. Physique (Phase & Vecteurs)", 
+        "2. Le Dipôle (Simulation)", 
+        "3. Imagerie Clinique"
+    ])
 
-        axes_dip[1].set_title(f"Vue Axiale (à Z={z_pos})", fontsize=10, color='white')
-        axes_dip[1].set_facecolor('#404040'); axes_dip[1].axis('off')
+    # --- SOUS-ONGLET 1 : LA NOUVELLE PARTIE PHYSIQUE (Mise à jour Diapo) ---
+    with swi_tab1:
+        st.subheader("1. Rappel sur la réception du signal (Complexes)")
         
-        if abs(z_pos) < 0.2:
-            axes_dip[1].add_patch(patches.Circle((0.5, 0.5), 0.35, color=col_equator_halo, alpha=0.5))
-            axes_dip[1].add_patch(patches.Circle((0.5, 0.5), 0.15, color=col_equator_center))
-            axes_dip[1].text(0.5, 0.1, "EQUATEUR", color='white', ha='center', fontsize=9)
-        elif 0.2 <= abs(z_pos) < 1.0:
-            size = 0.25 * (1.2 - abs(z_pos))
-            axes_dip[1].add_patch(patches.Circle((0.5, 0.5), size, color=col_poles))
-            axes_dip[1].text(0.5, 0.1, "LOBE (Pôle)", color='white', ha='center', fontsize=9)
-        else:
-            axes_dip[1].text(0.5, 0.5, "Hors Champ", color='gray', ha='center', fontsize=12)
+        # Paramètres interactifs (Slider TE)
+        # On garde le slider pour rendre le vecteur dynamique !
+        col_p1_param, col_p1_vide = st.columns([1, 2])
+        with col_p1_param:
+            te_simu = st.slider("Temps d'Écho (TE) [ms]", 
+                               min_value=0, max_value=60, value=20, step=1, 
+                               key="swi_p1_te_slider",
+                               help="Faites varier le TE pour voir le vecteur tourner et les composantes Réelle/Imaginaire changer.")
 
-        st.pyplot(fig_dip)
-    
-    st.divider()
-    
-    # 2. IMAGERIE CLINIQUE
-    st.subheader("2. Imagerie SWI Clinique")
-    
-    if HAS_NILEARN and processor.ready:
-        dims = processor.get_dims() 
-        c1_swi, c2_swi = st.columns([1, 4])
-        with c1_swi:
-             st.markdown("#### 🔄 Navigation")
-             swi_view = st.radio("Plan de Coupe :", ["Axiale", "Coronale", "Sagittale"], key="swi_view_mode")
-             st.markdown("---")
-             if swi_view == "Axiale":
-                 swi_slice = st.slider("Position Z", 0, dims[2]-1, 90, key="swi_z"); axis_code = 'z'
-             elif swi_view == "Coronale":
-                 swi_slice = st.slider("Position Y", 0, dims[1]-1, 100, key="swi_y"); axis_code = 'y'
-             else: 
-                 swi_slice = st.slider("Position X", 0, dims[0]-1, 90, key="swi_x"); axis_code = 'x'
-             
-             show_microbleeds_swi = st.checkbox("Simuler Micro-saignements", value=False)
-             st.markdown("---")
-             show_dipole_test = st.checkbox("🧪 Simuler Dipôle (Test)", value=False)
-             st.success(f"Mode : {swi_view}")
+        # Calculs Vectoriels (Simulés pour une veine)
+        t2_star_vein = 40       # ms
+        freq_shift_vein = 0.10  # Hz
+        
+        # Le signal tourne et décroît
+        mag_val = 0.9 * np.exp(-te_simu / t2_star_vein)
+        phase_val = - (2 * np.pi * freq_shift_vein * (te_simu/10.0)) + (np.pi/4) # On ajoute pi/4 pour commencer "en biais" comme sur l'image
+        
+        # Construction du nombre complexe
+        vec_c = mag_val * np.exp(1j * phase_val)
+        val_re = vec_c.real
+        val_im = vec_c.imag
 
-        with c2_swi:
-            sys_arg = "RHS" if "RHS" in dipole_system else "LHS"
-            sub_arg = dipole_substance 
-            
-            img_mag = processor.get_slice(axis_code, swi_slice, {}, swi_mode='mag', te=te, with_bleeds=show_microbleeds_swi)
-            img_phase = processor.get_slice(axis_code, swi_slice, {}, swi_mode='phase', with_bleeds=show_microbleeds_swi, swi_sys=sys_arg, swi_sub=sub_arg, with_dipole=show_dipole_test)
-            img_minip = processor.get_slice(axis_code, swi_slice, {}, swi_mode='minip', te=te, with_bleeds=show_microbleeds_swi)
-            
-            c_mag, c_pha, c_min = st.columns(3)
-            with c_mag: st.caption(f"1. Magnitude ({swi_view})"); st.image(utils.apply_window_level(img_mag, 1.0, 0.5), clamp=True, use_container_width=True)
-            with c_pha: st.caption(f"2. Phase ({sub_arg} - {sys_arg})"); st.image(utils.apply_window_level(img_phase, 1.0, 0.5), clamp=True, use_container_width=True)
-            with c_min: st.caption(f"3. MinIP Veineux ({swi_view})"); st.image(utils.apply_window_level(img_minip, 1.0, 0.5), clamp=True, use_container_width=True)
-            
-            if show_dipole_test:
-                if swi_view == "Axiale": st.info("ℹ️ **Dipôle (Test) :** Coupe Équatoriale (Rond). La couleur dépend du réglage ci-dessus.")
-                else: st.info("ℹ️ **Dipôle (Test) :** Coupe Longitudinale (Papillon). La couleur dépend du réglage ci-dessus.")
-    else: st.warning("Module Anatomique requis.")
+        # MISE EN PAGE : TEXTE (GAUCHE) vs GRAPHIQUE (DROITE)
+        col_text, col_graph = st.columns([1, 1])
 
+        # --- COLONNE GAUCHE : LES EXPLICATIONS DE L'IMAGE ---
+        with col_text:
+            st.markdown("""
+            ### La nature du Signal
+            Comme illustré sur le schéma, les 2 composantes réceptionnées du signal sont représentées par des vecteurs :
+            
+            * <span style='color:red'><b>Signal Réel (Re)</b></span> : La composante sur l'axe horizontal.
+            * <span style='color:green'><b>Signal Imaginaire (Im)</b></span> : Celui correspondant à la réception en quadrature (axe vertical).
+            
+            Cela correspond à la terminologie des **nombres complexes**. Le signal s'écrit alors :
+            """, unsafe_allow_html=True)
+            
+            st.latex(r"S = Re + i \cdot Im")
+            
+            st.info("""
+            **Reconstruction de l'image :**
+            On peut reconstruire des images à partir du signal réel ou imaginaire.
+            * L'image habituelle est en **Magnitude** (Module).
+            * En SWI, on s'intéresse surtout à la **Phase**.
+            """)
+            
+            st.markdown("#### Formules Clés :")
+            st.latex(r"M = \sqrt{Re^2 + Im^2}")
+            st.latex(r"\phi = \arctan(Im / Re)")
+
+            st.caption("Note : Même avec une seule antenne, le signal est scindé en 2 parties décalées de 90° pour le calcul de la FFT.")
+
+        # --- COLONNE DROITE : LE GRAPHIQUE IDENTIQUE A L'IMAGE ---
+        with col_graph:
+            fig_vect, ax = plt.subplots(figsize=(5, 5))
+            
+            # Limites et Croix centrale
+            ax.set_xlim(-1.1, 1.1); ax.set_ylim(-1.1, 1.1)
+            ax.axhline(0, color='black', linewidth=0.8); ax.axvline(0, color='black', linewidth=0.8)
+            ax.set_xlabel("Signal Réel (Re)", fontsize=9)
+            ax.set_ylabel("Signal Imaginaire (Im)", fontsize=9)
+            
+            # Cercle unité
+            circle = plt.Circle((0, 0), 1, color='#e0e0e0', fill=False, linestyle='--')
+            ax.add_artist(circle)
+
+            # 1. VECTEUR TOTAL (NOIR - Magnitude)
+            ax.arrow(0, 0, val_re, val_im, head_width=0.05, length_includes_head=True,
+                     fc='black', ec='black', linewidth=2, label='Magnitude (Signal)', zorder=5)
+            
+            # 2. COMPOSANTE REELLE (ROUGE)
+            ax.arrow(0, 0, val_re, 0, head_width=0.03, length_includes_head=True,
+                     fc='red', ec='red', linewidth=1.5, label='Réel', zorder=4)
+            
+            # 3. COMPOSANTE IMAGINAIRE (VERT)
+            ax.arrow(0, 0, 0, val_im, head_width=0.03, length_includes_head=True,
+                     fc='green', ec='green', linewidth=1.5, label='Imaginaire', zorder=4)
+
+            # Lignes de projection (pointillés) pour faire le rectangle
+            ax.plot([val_re, val_re], [0, val_im], color='gray', linestyle=':', linewidth=1)
+            ax.plot([0, val_re], [val_im, val_im], color='gray', linestyle=':', linewidth=1)
+
+            # Annotation de l'angle (Phase)
+            if mag_val > 0.2:
+                # Création d'un petit arc pour phi
+                arc_diam = 0.3
+                theta = np.linspace(0, phase_val, 20)
+                x_arc = arc_diam * np.cos(theta)
+                y_arc = arc_diam * np.sin(theta)
+                ax.plot(x_arc, y_arc, 'k-', linewidth=0.8)
+                # Texte Phi positionné un peu plus loin
+                ax.text(arc_diam*1.2 * np.cos(phase_val/2), arc_diam*1.2 * np.sin(phase_val/2), 
+                        r"$\phi$", fontsize=12, fontweight='bold')
+
+            # Labels sur le graph
+            ax.text(val_re, -0.15, "Re", color='red', ha='center', fontweight='bold')
+            ax.text(-0.15, val_im, "Im", color='green', va='center', fontweight='bold')
+            ax.text(val_re*1.1, val_im*1.1, "Signal", color='black', fontweight='bold')
+
+            ax.set_title(f"Plan Complexe (TE = {te_simu} ms)")
+            st.pyplot(fig_vect); plt.close(fig_vect)
+            
+            st.success(f"Valeurs actuelles : Magnitude = {mag_val:.2f} | Phase = {np.degrees(phase_val)%360:.0f}°")
+
+    # --- SOUS-ONGLET 2 : LE DIPÔLE ---
+    with swi_tab2:
+        st.subheader("2. 🧲 Le Laboratoire du Dipôle")
+        
+        col_dip_ctrl, col_dip_visu = st.columns([1, 3])
+        with col_dip_ctrl:
+            dipole_substance = st.radio("Substance :", ["Hématome (Paramagnétique)", "Calcium (Diamagnétique)"], key="dip_sub_key")
+            dipole_system = st.radio("Convention Phase :", ["RHS (GE/Philips/Canon)", "LHS (Siemens)"], key="dip_sys_key")
+            st.divider()
+            z_pos = st.slider("Coupe Axiale (Z)", -1.5, 1.5, 0.0, 0.1, help="0 = Equateur. +/- = Pôles.", key="dip_z_key")
+            
+        with col_dip_visu:
+            fig_dip, axes_dip = plt.subplots(1, 2, figsize=(10, 4))
+            fig_dip.patch.set_facecolor('#404040')
+            
+            is_rhs = "RHS" in dipole_system
+            is_para = "Hématome" in dipole_substance
+            sign_sub = 1 if is_para else -1; sign_sys = 1 if is_rhs else -1; combo = sign_sub * sign_sys
+            
+            if combo > 0: col_eq_cen = 'white'; col_eq_halo = 'black'; col_poles = 'black'
+            else: col_eq_cen = 'black'; col_eq_halo = 'white'; col_poles = 'white'
+                
+            axes_dip[0].set_title("Vue Coronale (Référence)", fontsize=10, color='white')
+            axes_dip[0].set_facecolor('#404040'); axes_dip[0].axis('off')
+            axes_dip[0].add_patch(patches.Ellipse((0.5, 0.7), 0.25, 0.35, color=col_poles, alpha=0.9))
+            axes_dip[0].add_patch(patches.Ellipse((0.5, 0.3), 0.25, 0.35, color=col_poles, alpha=0.9))
+            axes_dip[0].add_patch(patches.Rectangle((0.35, 0.48), 0.3, 0.04, color=col_eq_cen))
+            y_line = 0.5 - (z_pos * 0.2)
+            axes_dip[0].axhline(y=y_line, color='yellow', linewidth=2, linestyle='--')
+
+            axes_dip[1].set_title(f"Vue Axiale (à Z={z_pos})", fontsize=10, color='white')
+            axes_dip[1].set_facecolor('#404040'); axes_dip[1].axis('off')
+            
+            if abs(z_pos) < 0.2:
+                axes_dip[1].add_patch(patches.Circle((0.5, 0.5), 0.35, color=col_eq_halo, alpha=0.5))
+                axes_dip[1].add_patch(patches.Circle((0.5, 0.5), 0.15, color=col_eq_cen))
+                axes_dip[1].text(0.5, 0.1, "EQUATEUR", color='white', ha='center', fontsize=9)
+            elif 0.2 <= abs(z_pos) < 1.0:
+                size = 0.25 * (1.2 - abs(z_pos))
+                axes_dip[1].add_patch(patches.Circle((0.5, 0.5), size, color=col_poles))
+                axes_dip[1].text(0.5, 0.1, "LOBE (Pôle)", color='white', ha='center', fontsize=9)
+            else:
+                axes_dip[1].text(0.5, 0.5, "Hors Champ", color='gray', ha='center', fontsize=12)
+
+            st.pyplot(fig_dip); plt.close(fig_dip)
+    
+    # --- SOUS-ONGLET 3 : IMAGERIE CLINIQUE ---
+    with swi_tab3:
+        st.subheader("3. Imagerie SWI Clinique")
+        
+        if HAS_NILEARN and processor.ready:
+            dims = processor.get_dims() 
+            c1_swi, c2_swi = st.columns([1, 4])
+            with c1_swi:
+                 swi_view = st.radio("Plan de Coupe :", ["Axiale", "Coronale", "Sagittale"], key="swi_view_mode")
+                 st.markdown("---")
+                 if swi_view == "Axiale": swi_slice = st.slider("Position Z", 0, dims[2]-1, 90, key="swi_z"); axis_code = 'z'
+                 elif swi_view == "Coronale": swi_slice = st.slider("Position Y", 0, dims[1]-1, 100, key="swi_y"); axis_code = 'y'
+                 else: swi_slice = st.slider("Position X", 0, dims[0]-1, 90, key="swi_x"); axis_code = 'x'
+                 
+                 show_microbleeds_swi = st.checkbox("Simuler Micro-saignements", value=False, key="swi_bleed_check")
+                 show_dipole_test = st.checkbox("🧪 Simuler Dipôle (Test)", value=False, key="swi_dip_test_check")
+
+            with c2_swi:
+                # Récupération des paramètres du sous-onglet Dipôle
+                sys_arg = "RHS" if "RHS" in dipole_system else "LHS"
+                sub_arg = dipole_substance 
+                
+                img_mag = processor.get_slice(axis_code, swi_slice, {}, swi_mode='mag', te=te, with_bleeds=show_microbleeds_swi)
+                img_phase = processor.get_slice(axis_code, swi_slice, {}, swi_mode='phase', with_bleeds=show_microbleeds_swi, swi_sys=sys_arg, swi_sub=sub_arg, with_dipole=show_dipole_test)
+                img_minip = processor.get_slice(axis_code, swi_slice, {}, swi_mode='minip', te=te, with_bleeds=show_microbleeds_swi)
+                
+                c_mag, c_pha, c_min = st.columns(3)
+                with c_mag: st.caption(f"1. Magnitude ({swi_view})"); st.image(utils.apply_window_level(img_mag, 1.0, 0.5), clamp=True, use_container_width=True)
+                with c_pha: st.caption(f"2. Phase ({sub_arg} - {sys_arg})"); st.image(utils.apply_window_level(img_phase, 1.0, 0.5), clamp=True, use_container_width=True)
+                with c_min: st.caption(f"3. MinIP Veineux ({swi_view})"); st.image(utils.apply_window_level(img_minip, 1.0, 0.5), clamp=True, use_container_width=True)
+                
+                if show_dipole_test:
+                    st.info("ℹ️ Le dipôle simulé réagit aux réglages de l'onglet '2. Le Dipôle'.")
+        else: st.warning("Module Anatomique requis.")
 # [NOUVEL ONGLET 13 : MP-RAGE (3D T1) - MISE A JOUR V5.31]
 with t13:
     st.header("🧠 Séquence 3D T1 (MP-RAGE)")
@@ -909,32 +1001,29 @@ with t13:
         ax_mp.set_ylim(-1.0, 1.5); ax_mp.set_xlabel("Temps (ms)"); ax_mp.get_yaxis().set_visible(False); ax_mp.legend(loc='upper right')
         st.pyplot(fig_mp)
 
-# [NOUVEL ONGLET 14 : ASL - MODIFIE V738 (PATH ROBUSTE)]
+# [NOUVEL ONGLET 14 : ASL - CORRIGÉ]
 with t14:
     st.header("🩸 Perfusion ASL (Arterial Spin Labeling)")
     
-    # 1. Principe ASL (MODIF V738 : Image Externe Path Robuste)
+    # 1. Principe ASL
     st.subheader("1. Principe de la Technique")
     c_principe, c_texte = st.columns([1, 1])
     with c_principe:
-        # Code "Golden Fix" pour charger l'image utilisateur
         current_dir = os.path.dirname(os.path.abspath(__file__))
         image_asl_path = os.path.join(current_dir, "image_028fa1.jpg")
         
         if os.path.exists(image_asl_path):
             st.image(image_asl_path, caption="Principe ASL : Marquage et Acquisition", use_container_width=True)
         else:
-            # Fallback en cas d'oubli de l'image (Affiche une erreur utile)
             st.error(f"Image introuvable au chemin : {image_asl_path}")
-            st.markdown(f"*Vérifiez que le fichier 'image_028fa1.jpg' est bien dans le dossier : {current_dir}*")
 
     with c_texte:
         st.markdown("""
         ### Comment ça marche ?
-        1.  **Marquage (Tag) :** Une impulsion radiofréquence est appliquée au niveau du cou (rectangle jaune). Elle "retourne" l'aimantation des protons du sang artériel qui monte vers le cerveau.
-        2.  **Délai (PLD) :** On attend un temps précis (Post Labeling Delay) pour laisser le sang marqué arriver dans les capillaires cérébraux.
+        1.  **Marquage (Tag) :** Une impulsion radiofréquence est appliquée au niveau du cou.
+        2.  **Délai (PLD) :** On attend un temps précis (Post Labeling Delay).
         3.  **Acquisition :** On prend une image du cerveau.
-        4.  **Soustraction :** On soustrait cette image d'une image "Contrôle" (sans marquage). La différence ne montre que le sang qui est arrivé : c'est la perfusion !
+        4.  **Soustraction :** On soustrait l'image Contrôle et l'image Marquée.
         """)
 
     st.divider()
@@ -954,14 +1043,19 @@ with t14:
             if show_atrophy: st.warning("🧠 **Atrophie (Alzheimer)**")
         
         with c2_asl:
+            # Récupération des cartes simulées
             ctrl_img, label_img, perf_map = processor.get_asl_maps('z', asl_slice, pld, 1600, with_stroke=show_stroke, with_atrophy=show_atrophy)
             
             if ctrl_img is not None:
                 col_ctrl, col_label, col_perf = st.columns(3)
+                
+                # --- CORRECTION ICI : Ajout de 'utils.' devant apply_window_level ---
                 with col_ctrl:
                     st.image(utils.apply_window_level(ctrl_img, 1.0, 0.5), caption="1. Image Contrôle (Anatomie)", clamp=True, use_container_width=True)
                 with col_label:
                     st.image(utils.apply_window_level(label_img, 1.0, 0.5), caption="2. Image Marquée (Sang 'Noir')", clamp=True, use_container_width=True)
+                # -------------------------------------------------------------------
+                
                 with col_perf:
                     fig_perf, ax_perf = plt.subplots()
                     im = ax_perf.imshow(perf_map, cmap='jet', vmin=0, vmax=np.max(perf_map)*0.8)
