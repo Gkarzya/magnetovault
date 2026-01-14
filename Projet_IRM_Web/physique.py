@@ -1,4 +1,4 @@
-# physique.py - VERSION 7.60 (CORRIGÉE : PROPORTIONNALITÉ CONCATS)
+# physique.py - VERSION 7.60 (CORRIGÉE : SNR & PROPORTIONNALITÉ CONCATS)
 import numpy as np
 
 def calculate_signal(tr_val, te_val, ti_val, t1, t2, t2s, adc, pd, fa_deg, gre_mode, dwi_mode, b_val):

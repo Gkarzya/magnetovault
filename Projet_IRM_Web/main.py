@@ -1,4 +1,4 @@
-# main2.py - VERSION 7.61 (SWI PÉDAGOGIQUE & CORRECTION TEMPS)
+# main.py - VERSION 7.98 (LÉGENDES COMPLÈTES & BIBLIOGRAPHIE)
 import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
@@ -6,6 +6,8 @@ import matplotlib.patches as patches
 import streamlit.components.v1 as components
 import os
 from scipy.ndimage import shift, gaussian_filter
+import plotly.express as px
+import plotly.graph_objects as go
 
 # IMPORTS DES MODULES LOCAUX
 import constantes as cst
@@ -14,7 +16,7 @@ import physique as phy
 from anatomie import AdvancedMRIProcessor, HAS_NILEARN
 
 # CONFIG & CSS
-st.set_page_config(layout="wide", page_title="Magnetovault V7.61 - Stable")
+st.set_page_config(layout="wide", page_title="Magnetovault V7.98 - Final")
 utils.inject_css()
 
 # --- STATE MANAGEMENT ---
@@ -177,8 +179,32 @@ ipat_on = st.sidebar.checkbox("Activer Accélération", value=False, key=f"ipat_
 ipat_factor = st.sidebar.slider("Facteur R", 2, 4, 2, key=f"ipat_r_{current_reset_id}") if ipat_on else 1
 
 st.sidebar.markdown("---")
+
+# ==============================================================================
+# MENTIONS LÉGALES & BIBLIOGRAPHIE (MIS À JOUR)
+# ==============================================================================
 with st.sidebar.expander("🛡️ Mentions Légales & Droits"):
-    st.markdown("""**MagnétoVault Simulator © 2025**""")
+    st.markdown("""
+    **MagnétoVault Simulator © 2025**
+    
+    **1. Usage Pédagogique :** Ce simulateur est un outil exclusivement éducatif. Il ne doit **en aucun cas** être utilisé pour du diagnostic médical ou de la recherche clinique sur des patients.
+    
+    **2. Propriété Intellectuelle :** Le code source et la conception sont protégés. Toute reproduction sans accord est interdite.
+    
+    **3. Responsabilité :** L'auteur décline toute responsabilité quant à l'interprétation des données simulées.
+    
+    📧 **Contact :** [magnetovault@gmail.com](mailto:magnetovault@gmail.com)
+    """)
+
+with st.sidebar.expander("📚 Bibliographie & Crédits"):
+    st.markdown("""
+    L'onglet **Anatomie** repose sur des outils scientifiques open-source reconnus :
+    
+    * **Moteur Python :** [Nilearn](https://nilearn.github.io/) (Machine learning for Neuro-Imaging in Python).
+    * **Template Géométrique :** **MNI152** (ICBM 2009c Nonlinear Asymmetric).
+    * **Atlas Cortical & Sous-cortical :** [Harvard-Oxford Structural Atlases](https://fsl.fmrib.ox.ac.uk/fsl/fslwiki/Atlases) (FMRIB Centre, University of Oxford).
+    * **Visualisation :** Plotly & Matplotlib.
+    """)
 
 # ==============================================================================
 # CALCULS PHYSIQUES (CORRECTION BUG CONCATS)
@@ -189,13 +215,10 @@ try:
     # Appel du module physique mis à jour
     raw_ms = phy.calculate_acquisition_time(tr, mat, nex, turbo, ipat_factor, n_concats, n_slices, is_mprage)
 except AttributeError:
-    # FALLBACK DE SÉCURITÉ : Doit inclure la logique de concaténation !
+    # FALLBACK DE SÉCURITÉ
     base_time = (tr * mat * nex) / (turbo * ipat_factor)
-    if is_mprage:
-        raw_ms = base_time * n_slices
-    else:
-        # CORRECTION ICI : On multiplie bien par n_concats même en mode secours
-        raw_ms = base_time * n_concats
+    if is_mprage: raw_ms = base_time * n_slices
+    else: raw_ms = base_time * n_concats
 
 final_seconds = raw_ms / 1000.0; mins = int(final_seconds // 60); secs = int(final_seconds % 60); str_duree = f"{mins} min {secs} s"
 
@@ -242,7 +265,7 @@ final += np.random.normal(0, noise_level, (S,S)); final = np.clip(final, 0, 1.3)
 f = np.fft.fftshift(np.fft.fft2(final)); kspace = 20 * np.log(np.abs(f) + 1)
 
 # --- 13. AFFICHAGE FINAL ---
-st.title("Simulateur MagnétoVault V7.61")
+st.title("Simulateur MagnétoVault V7.98")
 
 t_home, t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12, t13, t14 = st.tabs([
     "🏠 Accueil", "Fantôme", "Espace K 🌀", "Signaux", "Codage", "🧠 Anatomie", 
@@ -270,32 +293,52 @@ with t_home:
     """)
     st.info("💡 Sélectionnez l'onglet **'Fantôme'** ci-dessus pour commencer.")
 
-# [TAB 1 : FANTOME]
+# [TAB 1 : FANTOME (LÉGENDES ET FORMULES COMPLÈTES)]
 with t1:
     c1, c2 = st.columns([1, 1])
     with c1:
         k1, k2 = st.columns(2); k1.metric("⏱️ Durée", str_duree); k2.metric("📉 SNR Relatif", str_snr); st.divider()
         st.subheader("1. Formules & Glossaire")
-        if is_dwi: st.markdown("**Formule Diffusion :**"); st.latex(r"S = S_0 \cdot e^{-b \cdot ADC}")
-        elif is_mprage: st.markdown("**Temps Acquisition 3D :**"); st.latex(r"TA = TR \times N_{Ph} \times N_{Slices} \times NEX")
-        else: st.markdown("**Temps Acquisition 2D :**"); st.latex(r"TA = \frac{TR \times N_{Ph} \times NEX}{TF \times R} \times Concats")
         
-        st.markdown("**Rapport Signal/Bruit :**"); st.latex(r"SNR \propto V_{vox} \times \sqrt{\frac{N_{Ph} \times NEX}{BW}} \times \frac{1}{g \sqrt{R}}")
+        # --- FORMULES MATHÉMATIQUES COMPLETES ---
+        if is_dwi: 
+            st.markdown("**Formule Diffusion :**")
+            st.latex(r"S = S_0 \cdot e^{-b \cdot ADC}")
+        elif is_mprage: 
+            st.markdown("**Temps Acquisition 3D :**")
+            st.latex(r"TA = TR \times N_{Ph} \times N_{Slices} \times NEX")
+        else: 
+            st.markdown("**Temps Acquisition 2D :**")
+            st.latex(r"TA = \frac{TR \times N_{Ph} \times NEX}{TF \times R} \times Concats")
         
-        with st.expander("📖 Voir la Légende Complète des Termes"):
+        st.markdown("**Rapport Signal/Bruit (SNR) :**")
+        st.latex(r"SNR \propto V_{vox} \times \sqrt{\frac{N_{Ph} \times NEX}{BW}} \times \frac{1}{g \sqrt{R}}")
+        
+        # --- LÉGENDE EXHAUSTIVE DE TOUS LES TERMES ---
+        with st.expander("📖 Glossaire Complet des Termes Affichés", expanded=False):
             st.markdown("""
-            | Terme | Signification | Rôle |
+            | Terme | Signification | Contexte |
             | :--- | :--- | :--- |
-            | **TR** | Temps de Répétition | Contrôle le contraste T1 et le temps global. |
-            | **TE** | Temps d'Écho | Contrôle le contraste T2. |
-            | **$N_{Ph}$** | Lignes de Phase | Résolution verticale (Matrice). |
-            | **$NEX$** | Nombre d'Excitations | Moyennage du signal. |
-            | **Concats**| Concaténations | Découpage des coupes en plusieurs paquets (Multiplie le temps). |
+            | **TR** | Temps de Répétition | Temps entre deux excitations (Contrôle le T1 et la durée). |
+            | **TE** | Temps d'Écho | Temps jusqu'à la lecture du signal (Contrôle le T2). |
+            | **TF / Turbo** | Facteur Turbo | Nombre d'échos acquis par TR (Accélère la séquence). |
+            | **$N_{Ph}$** | Lignes de Phase | Nombre de lignes à acquérir (Matrice). |
+            | **$N_{Slices}$** | Nombre de Coupes | En 3D, agit comme une 2ème dimension de phase. |
+            | **NEX** | Nombre d'Excitations | Moyennage pour augmenter le SNR (mais allonge le temps). |
+            | **Concats** | Concaténations | Découpage des coupes en plusieurs paquets (pour TR long). |
+            | **R (iPAT)** | Facteur d'Accélération | Imagerie Parallèle (réduit le temps, réduit le SNR). |
+            | **$V_{vox}$** | Volume du Voxel | Taille du pixel × épaisseur (Le SNR dépend du volume !). |
+            | **BW** | Bande Passante | Vitesse de lecture (BW élevé = Acquisition rapide mais moins de SNR). |
+            | **b** | Facteur b (DWI) | Force du gradient de diffusion ($s/mm^2$). |
+            | **ADC** | Coeff. Diffusion | Capacité de l'eau à bouger (Restriction = Signal élevé en DWI). |
+            | **$S_0$** | Signal de base | Signal T2 sans pondération de diffusion. |
             """)
-        if show_stroke: st.error("⚠️ **PATHOLOGIE : AVC Ischémique**")
+        
+        if show_stroke: st.error("⚠️ **PATHOLOGIE : AVC Ischémique (Zone Rouge)**")
         if show_atrophy: st.warning("🧠 **PATHOLOGIE : Atrophie (Alzheimer)**")
 
     with c2:
+        # VISUEL FANTÔME
         fig_anot, ax_anot = plt.subplots(figsize=(5,5))
         ax_anot.imshow(final, cmap='gray', vmin=0, vmax=1.3)
         ax_anot.axis('off')
@@ -306,12 +349,48 @@ with t1:
         st.pyplot(fig_anot)
         plt.close(fig_anot)
 
+# [TAB 2 : ESPACE K (VISUALISATION AVEC TE RÉEL)]
 with t2:
-    st.markdown("### 🌀 Remplissage de l'Espace K")
+    st.markdown("### 🌀 Espace K et Remplissage")
     col_k1, col_k2 = st.columns([1, 1])
     with col_k1:
         fill_mode = st.radio("Ordre de Remplissage", ["Linéaire (Haut -> Bas)", "Centrique (Centre -> Bords)"], key=f"k_mode_{current_reset_id}")
         acq_pct = st.slider("Progression (%)", 0, 100, 10, step=1, key=f"k_pct_{current_reset_id}")
+        
+        # --- VISUALISATION DU RANGEMENT TSE AVEC TE RÉEL ---
+        if turbo > 1:
+            st.divider()
+            st.markdown(f"#### 🚅 Train d'Échos (Facteur {turbo})")
+            st.caption(f"Espace Inter-Echo (ES) : {es} ms")
+            
+            fig_tse, ax_tse = plt.subplots(figsize=(5, 3))
+            n_lines = 32 
+            colors = plt.cm.jet(np.linspace(0, 1, turbo))
+            
+            for i in range(n_lines):
+                dist_from_center = abs(i - n_lines/2)
+                norm_dist = dist_from_center / (n_lines/2)
+                echo_idx = int(norm_dist * (turbo-1))
+                if echo_idx >= turbo: echo_idx = turbo - 1
+                ax_tse.hlines(i, 0, 1, colors=colors[echo_idx], linewidth=2)
+            
+            # --- MODIFICATION ICI : AFFICHER LE TE RÉEL ---
+            for e in range(turbo):
+                # Calcul du TE de l'écho e : (Numéro d'écho) * ES
+                te_val_echo = (e + 1) * es
+                ax_tse.text(1.05, e * (n_lines/turbo), f"TE={int(te_val_echo)}ms", color=colors[e], fontweight='bold', fontsize=9)
+                
+            ax_tse.set_yticks([]); ax_tse.set_xticks([])
+            ax_tse.set_title(f"Contribution des échos au Contraste (Ky)", fontsize=9)
+            ax_tse.spines['top'].set_visible(False); ax_tse.spines['right'].set_visible(False)
+            ax_tse.spines['bottom'].set_visible(False); ax_tse.spines['left'].set_visible(False)
+            ax_tse.set_ylabel("K-Space (Ky)")
+            ax_tse.axhline(n_lines/2, color='black', linestyle='--', linewidth=1)
+            ax_tse.text(0.5, n_lines/2 + 1, "Centre (Contraste)", ha='center', fontsize=8)
+            
+            st.pyplot(fig_tse)
+            plt.close(fig_tse)
+
     with col_k2:
         mask_k = np.zeros((S, S)); lines_to_fill = int(S * (acq_pct / 100.0))
         if "Linéaire" in fill_mode: mask_k[0:lines_to_fill, :] = 1
@@ -336,24 +415,70 @@ with t4:
 with t5:
     st.header("Exploration Anatomique (Physique Avancée)")
     if HAS_NILEARN and processor.ready:
-        c1, c2 = st.columns([1, 3]); dims = processor.get_dims()
+        c1, c2 = st.columns([1, 3])
+        dims = processor.get_dims()
+        
         with c1:
             plane = st.radio("Plan de Coupe", ["Plan Axial", "Plan Sagittal", "Plan Coronal"], key="or_298")
-            if "Axial" in plane: idx = st.slider("Z", 0, dims[2]-1, 90, key=f"sl_{current_reset_id}"); ax='z'
-            elif "Sagittal" in plane: idx = st.slider("X", 0, dims[0]-1, 90, key=f"sl_{current_reset_id}"); ax='x'
-            else: idx = st.slider("Y", 0, dims[1]-1, 100, key=f"sl_{current_reset_id}"); ax='y'
-            st.divider(); window = st.slider("Fenêtre", 0.01, 2.0, 0.74, 0.005, key=f"wn_{current_reset_id}"); level = st.slider("Niveau", 0.0, 1.0, 0.55, 0.005, key=f"lv_{current_reset_id}")
+            if "Axial" in plane: 
+                idx = st.slider("Z", 0, dims[2]-1, 90, key=f"sl_{current_reset_id}"); ax='z'
+            elif "Sagittal" in plane: 
+                idx = st.slider("X", 0, dims[0]-1, 90, key=f"sl_{current_reset_id}"); ax='x'
+            else: 
+                idx = st.slider("Y", 0, dims[1]-1, 100, key=f"sl_{current_reset_id}"); ax='y'
+            
+            st.divider()
+            window = st.slider("Fenêtre", 0.01, 2.0, 0.74, 0.005, key=f"wn_{current_reset_id}")
+            level = st.slider("Niveau", 0.0, 1.0, 0.55, 0.005, key=f"lv_{current_reset_id}")
+            
+            st.divider()
+            # --- LE NOUVEAU BOUTON ---
+            show_interactive_legends = st.checkbox("🔍 Activer Légendes (Atlas Harvard-Oxford)", value=False, help="Identifie les structures (Gyrus, Noyaux, Tronc, Cervelet) au survol.")
+
             if is_dwi: 
                 if show_adc_map: st.info("🗺️ **Mode Carte ADC** (LCR Blanc)")
                 else: st.success(f"🧬 **Mode Diffusion** (b={b_value})")
             if show_stroke and ax == 'z': st.error("⚠️ **AVC Visible**")
+
         with c2:
+            # 1. Calcul de l'image IRM
             w_vals = {'csf':v_lcr, 'gm':v_gm, 'wm':v_wm, 'fat':v_fat}
             if show_stroke: w_vals['wm'] = w_vals['wm'] * 0.9 + v_stroke * 0.1
             seq_type_arg = 'dwi' if is_dwi else ('gre' if is_gre else None)
+            
             img_raw = processor.get_slice(ax, idx, w_vals, seq_type=seq_type_arg, te=te, tr=tr, fa=flip_angle, b_val=b_value, adc_mode=show_adc_map, with_stroke=show_stroke)
-            if img_raw is not None: st.image(utils.apply_window_level(img_raw, window, level), clamp=True, width=600)
-    else: st.warning("Module 'nilearn' manquant.")
+            
+            if img_raw is not None:
+                img_display = utils.apply_window_level(img_raw, window, level)
+
+                if show_interactive_legends:
+                    # MODE INTERACTIF (PLOTLY)
+                    with st.spinner("Chargement de l'Atlas Anatomique..."):
+                        labels_map = processor.get_anatomical_labels(ax, idx)
+                        fig = px.imshow(
+                            img_display, 
+                            color_continuous_scale='gray', 
+                            zmin=0, zmax=1,
+                            binary_string=False
+                        )
+                        fig.update_traces(
+                            customdata=labels_map,
+                            hovertemplate="<b>%{customdata}</b><br>Intensité: %{z:.2f}<extra></extra>"
+                        )
+                        fig.update_layout(
+                            margin=dict(l=0, r=0, t=0, b=0),
+                            coloraxis_showscale=False,
+                            width=600, height=600,
+                            xaxis=dict(showticklabels=False, showgrid=False, zeroline=False),
+                            yaxis=dict(showticklabels=False, showgrid=False, zeroline=False)
+                        )
+                        st.plotly_chart(fig, config={'displayModeBar': False})
+                        st.caption("ℹ️ Source: Atlas Harvard-Oxford (Cortical & Sous-cortical).")
+                else:
+                    # MODE RAPIDE (STANDARD)
+                    st.image(img_display, clamp=True, width=600)
+    else: 
+        st.warning("Module 'nilearn' manquant ou données non chargées.")
 
 with t6:
     st.header("📈 Physique")
@@ -614,7 +739,6 @@ with t11:
     st.markdown(f"### 📄 {current_slide}")
     fig_ppt, ax_ppt = plt.subplots(figsize=(10, 6)); ax_ppt.text(0.5, 0.5, f"CONTENU DU COURS\n\n(Diapositive: {current_slide})", ha='center', va='center', fontsize=20, color='gray'); ax_ppt.set_facecolor('#f0f0f5'); ax_ppt.axis('off'); st.pyplot(fig_ppt)
 
-# [TAB 12 : SWI - VERSION PÉDAGOGIQUE (BOUSSOLE)]
 with t12:
     st.header("🩸 Imagerie de Susceptibilité Magnétique (SWI)")
     
@@ -627,90 +751,47 @@ with t12:
    # --- SOUS-ONGLET 1 : PHYSIQUE & EXPLICATIONS (Layout Optimisé) ---
     with swi_tab1:
         st.subheader("1. Physique : L'Analogie de la Boussole")
-        
-        # A. ZONE EXPÉRIENCE (En haut pour l'immédiateté)
-        # On utilise des colonnes pour mettre les sliders juste à côté du graphique
         col_ctrl, col_graph = st.columns([1, 2], gap="medium")
-        
         with col_ctrl:
             st.markdown("#### 🎛️ Contrôles")
             st.caption("_Modifiez les valeurs pour faire tourner l'aiguille._")
-            
-            # Les Sliders sont maintenant tout en haut
             te_simu = st.slider("Temps d'Écho (TE)", 0, 80, 20, step=1, key="swi_te_p1_pedago")
             fa_simu = st.slider("Angle Bascule (°)", 5, 90, 30, key="swi_fa_p1_pedago")
-            
-            # Calculs (Identiques)
             t2_star = 50.0; df = 8.0 
             mag = np.sin(np.radians(fa_simu)) * np.exp(-te_simu / t2_star)
             phase_visu = np.radians(max(10, min(80, 60 - (te_simu/2))))
             vec_visu = mag * np.exp(1j * phase_visu)
-
-            # Métriques collées aux sliders pour lecture directe
             st.divider()
             c_met1, c_met2 = st.columns(2)
             c_met1.metric("Réel (Ombre Sol)", f"{vec_visu.real:.2f}")
             c_met2.metric("Imag (Ombre Mur)", f"{vec_visu.imag:.2f}")
 
         with col_graph:
-            # GRAPHIQUE (Centré et mis en valeur)
             fig_v, ax_v = plt.subplots(figsize=(5, 5)) # Taille optimisée
             fig_v.patch.set_alpha(0) 
-            
-            # Repère
-            lim = 1.1
-            ax_v.set_xlim(-0.1, lim); ax_v.set_ylim(-0.1, lim)
+            lim = 1.1; ax_v.set_xlim(-0.1, lim); ax_v.set_ylim(-0.1, lim)
             ax_v.axhline(0, color='white', lw=1); ax_v.axvline(0, color='white', lw=1)
-            
-            # 1. SIGNAL (BLEU)
-            ax_v.arrow(0, 0, vec_visu.real, vec_visu.imag, head_width=0.03, lw=4, 
-                       fc='#3498db', ec='#3498db', length_includes_head=True, zorder=5)
+            ax_v.arrow(0, 0, vec_visu.real, vec_visu.imag, head_width=0.03, lw=4, fc='#3498db', ec='#3498db', length_includes_head=True, zorder=5)
             ax_v.text(vec_visu.real/2, vec_visu.imag/2 + 0.1, "SIGNAL", color='#3498db', fontweight='bold', ha='center', fontsize=12)
-
-            # 2. PROJECTION RÉELLE (ROUGE)
             ax_v.plot([vec_visu.real, vec_visu.real], [0, vec_visu.imag], color='gray', ls=':', lw=1)
-            ax_v.arrow(0, 0, vec_visu.real, 0, head_width=0.02, lw=3, 
-                       fc='#e74c3c', ec='#e74c3c', length_includes_head=True, zorder=4)
+            ax_v.arrow(0, 0, vec_visu.real, 0, head_width=0.02, lw=3, fc='#e74c3c', ec='#e74c3c', length_includes_head=True, zorder=4)
             ax_v.text(vec_visu.real/2, -0.08, "Réel (X)", color='#e74c3c', ha='center', fontsize=10, fontweight='bold')
-
-            # 3. PROJECTION IMAGINAIRE (VERT)
             ax_v.plot([0, vec_visu.real], [vec_visu.imag, vec_visu.imag], color='gray', ls=':', lw=1)
-            ax_v.arrow(0, 0, 0, vec_visu.imag, head_width=0.02, lw=3, 
-                       fc='#2ecc71', ec='#2ecc71', length_includes_head=True, zorder=4)
+            ax_v.arrow(0, 0, 0, vec_visu.imag, head_width=0.02, lw=3, fc='#2ecc71', ec='#2ecc71', length_includes_head=True, zorder=4)
             ax_v.text(-0.02, vec_visu.imag/2, "Imag (Y)", color='#2ecc71', ha='right', va='center', fontsize=10, fontweight='bold')
-
-            # Arc de Phase
-            arc = patches.Arc((0,0), 0.4, 0.4, theta1=0, theta2=np.degrees(phase_visu), color='yellow', lw=2)
-            ax_v.add_patch(arc)
+            arc = patches.Arc((0,0), 0.4, 0.4, theta1=0, theta2=np.degrees(phase_visu), color='yellow', lw=2); ax_v.add_patch(arc)
             ax_v.text(0.25, 0.1, "Phase", color='yellow', fontsize=11, fontweight='bold')
+            ax_v.set_title("Visualisation Vectorielle", color='white', fontsize=12); ax_v.set_aspect('equal'); ax_v.axis('off')
+            st.pyplot(fig_v); plt.close(fig_v)
 
-            ax_v.set_title("Visualisation Vectorielle", color='white', fontsize=12)
-            ax_v.set_aspect('equal'); ax_v.axis('off')
-            
-            st.pyplot(fig_v)
-            plt.close(fig_v)
-
-        # B. ZONE EXPLICATION (En dessous ou repliable)
         st.markdown("---")
         with st.expander("📖 Comprendre l'Analogie (Cliquez pour dérouler)", expanded=True):
             c_txt1, c_txt2 = st.columns(2)
             with c_txt1:
-                st.info("""
-                **🧭 L'Analogie de la Boussole**
-                
-                * **L'Aiguille (Bleue)** : C'est le Signal IRM total.
-                * **Sa Longueur** : La force du signal (Magnitude).
-                * **Sa Direction** : La nature du tissu (Phase).
-                """)
+                st.info("""**🧭 L'Analogie de la Boussole** \n * **L'Aiguille (Bleue)** : C'est le Signal IRM total. \n * **Sa Longueur** : La force du signal (Magnitude). \n * **Sa Direction** : La nature du tissu (Phase).""")
             with c_txt2:
-                st.warning("""
-                **💡 Pourquoi Réel & Imaginaire ?**
-                
-                L'ordinateur ne stocke pas une flèche. Il stocke ses ombres :
-                * **Partie Réelle :** L'ombre au sol (Axe X).
-                * **Partie Imaginaire :** L'ombre au mur (Axe Y).
-                """)
-    # --- SOUS-ONGLET 2 : LE DIPÔLE ---
+                st.warning("""**💡 Pourquoi Réel & Imaginaire ?** \n L'ordinateur ne stocke pas une flèche. Il stocke ses ombres : \n * **Partie Réelle :** L'ombre au sol (Axe X). \n * **Partie Imaginaire :** L'ombre au mur (Axe Y).""")
+    
     with swi_tab2:
         st.subheader("2. 🧲 Le Laboratoire du Dipôle")
         col_dip_ctrl, col_dip_visu = st.columns([1, 3])
@@ -719,20 +800,16 @@ with t12:
             dipole_system = st.radio("Convention Phase :", ["RHS (GE/Philips/Canon)", "LHS (Siemens)"], key="dip_sys_key")
             st.divider()
             z_pos = st.slider("Coupe Axiale (Z)", -1.5, 1.5, 0.0, 0.1, key="dip_z_key")
-            
         with col_dip_visu:
-            fig_dip, axes_dip = plt.subplots(1, 2, figsize=(10, 4))
-            fig_dip.patch.set_facecolor('#404040')
+            fig_dip, axes_dip = plt.subplots(1, 2, figsize=(10, 4)); fig_dip.patch.set_facecolor('#404040')
             is_rhs = "RHS" in dipole_system; is_para = "Hématome" in dipole_substance
             combo = (1 if is_para else -1) * (1 if is_rhs else -1)
             col_eq_cen, col_eq_halo, col_poles = ('white', 'black', 'black') if combo > 0 else ('black', 'white', 'white')
-            
             axes_dip[0].set_facecolor('#404040'); axes_dip[0].axis('off')
             axes_dip[0].add_patch(patches.Ellipse((0.5, 0.7), 0.25, 0.35, color=col_poles, alpha=0.9))
             axes_dip[0].add_patch(patches.Ellipse((0.5, 0.3), 0.25, 0.35, color=col_poles, alpha=0.9))
             axes_dip[0].add_patch(patches.Rectangle((0.35, 0.48), 0.3, 0.04, color=col_eq_cen))
             axes_dip[0].axhline(y=0.5 - (z_pos * 0.2), color='yellow', linewidth=2, linestyle='--')
-
             axes_dip[1].set_facecolor('#404040'); axes_dip[1].axis('off')
             if abs(z_pos) < 0.2:
                 axes_dip[1].add_patch(patches.Circle((0.5, 0.5), 0.35, color=col_eq_halo, alpha=0.5))
@@ -741,61 +818,32 @@ with t12:
                 axes_dip[1].add_patch(patches.Circle((0.5, 0.5), 0.25 * (1.2 - abs(z_pos)), color=col_poles))
             st.pyplot(fig_dip); plt.close(fig_dip)
 
-   # --- SOUS-ONGLET 3 : CLINIQUE (Modifié : MinIP Fixe) ---
     with swi_tab3:
         st.subheader("3. Imagerie SWI Clinique")
-        
-        # Définition du chemin de l'image statique
-        # Assurez-vous que le fichier est bien dans le dossier !
         path_minip_fixe = os.path.join(current_dir, "minip_static.png") 
-        
         if HAS_NILEARN and processor.ready:
             dims = processor.get_dims() 
             c1_swi, c2_swi = st.columns([1, 4])
-            
             with c1_swi:
                  st.markdown("##### 🩻 Navigation")
-                 # Ces contrôles ne pilotent plus que Magnitude et Phase
                  swi_view = st.radio("Plan de Coupe :", ["Axiale", "Coronale", "Sagittale"], key="swi_view_mode")
-                 
-                 if swi_view == "Axiale": 
-                     swi_slice = st.slider("Position Z", 0, dims[2]-1, 90, key="swi_z"); axis_code = 'z'
-                 elif swi_view == "Coronale": 
-                     swi_slice = st.slider("Position Y", 0, dims[1]-1, 100, key="swi_y"); axis_code = 'y'
-                 else: 
-                     swi_slice = st.slider("Position X", 0, dims[0]-1, 90, key="swi_x"); axis_code = 'x'
-                     
+                 if swi_view == "Axiale": swi_slice = st.slider("Position Z", 0, dims[2]-1, 90, key="swi_z"); axis_code = 'z'
+                 elif swi_view == "Coronale": swi_slice = st.slider("Position Y", 0, dims[1]-1, 100, key="swi_y"); axis_code = 'y'
+                 else: swi_slice = st.slider("Position X", 0, dims[0]-1, 90, key="swi_x"); axis_code = 'x'
                  st.divider()
                  show_microbleeds_swi = st.checkbox("Simuler Micro-saignements", False, key="swi_bleed_check")
                  show_dipole_test = st.checkbox("🧪 Dipôle (Test)", False, key="swi_dip_test_check")
-
             with c2_swi:
-                # 1. Calculs DYNAMIQUES pour Magnitude et Phase uniquement
-                sys_arg = "RHS" if "RHS" in dipole_system else "LHS"
-                sub_arg = dipole_substance 
-                
+                sys_arg = "RHS" if "RHS" in dipole_system else "LHS"; sub_arg = dipole_substance 
                 img_mag = processor.get_slice(axis_code, swi_slice, {}, swi_mode='mag', te=te_simu, with_bleeds=show_microbleeds_swi)
                 img_phase = processor.get_slice(axis_code, swi_slice, {}, swi_mode='phase', with_bleeds=show_microbleeds_swi, swi_sys=sys_arg, swi_sub=sub_arg, with_dipole=show_dipole_test)
-                
-                # 2. Affichage
                 c_mag, c_pha, c_min = st.columns(3)
-                
-                with c_mag: 
-                    st.image(utils.apply_window_level(img_mag, 1.0, 0.5), caption=f"1. Magnitude ({swi_view})", use_container_width=True)
-                
-                with c_pha: 
-                    st.image(utils.apply_window_level(img_phase, 1.0, 0.5), caption=f"2. Phase ({swi_view})", use_container_width=True)
-                
+                with c_mag: st.image(utils.apply_window_level(img_mag, 1.0, 0.5), caption=f"1. Magnitude ({swi_view})", use_container_width=True)
+                with c_pha: st.image(utils.apply_window_level(img_phase, 1.0, 0.5), caption=f"2. Phase ({swi_view})", use_container_width=True)
                 with c_min: 
-                    # 3. Image STATIQUE (Indépendante)
-                    if os.path.exists(path_minip_fixe):
-                        st.image(path_minip_fixe, caption="3. MinIP (Référence Axiale)", use_container_width=True)
-                    else:
-                        # Fallback propre si l'image n'est pas encore uploadée
-                        st.warning(f"Image 'minip_static.png' introuvable.")
-                        st.caption("Veuillez ajouter l'image dans le dossier.")
-                        # On affiche un carré noir pour garder la mise en page
-                        st.image(np.zeros((200,200)), caption="Image manquante", clamp=True)
+                    if os.path.exists(path_minip_fixe): st.image(path_minip_fixe, caption="3. MinIP (Référence Axiale)", use_container_width=True)
+                    else: st.image(np.zeros((200,200)), caption="Image manquante", clamp=True)
+
 with t13:
     st.header("🧠 Séquence 3D T1 Ultra-Rapide (MP-RAGE)")
     st.markdown("""
@@ -846,12 +894,8 @@ with t14:
     st.header("🩸 Perfusion ASL (Arterial Spin Labeling)")
     c_principe, c_texte = st.columns([1, 1])
     with c_principe:
-        # On définit le chemin ici si ce n'est pas fait plus haut
-        current_dir = os.path.dirname(os.path.abspath(__file__))
         image_asl_path = os.path.join(current_dir, "image_028fa1.jpg")
-        
-        if os.path.exists(image_asl_path): 
-            st.image(image_asl_path, caption="Principe ASL", use_container_width=True)
+        if os.path.exists(image_asl_path): st.image(image_asl_path, caption="Principe ASL", use_container_width=True)
     with c_texte:
         st.markdown("""
         ### Comment ça marche ?
