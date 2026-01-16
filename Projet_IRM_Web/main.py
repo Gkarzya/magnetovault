@@ -1,8 +1,9 @@
-# main.py - VERSION 7.98 (LÉGENDES COMPLÈTES & BIBLIOGRAPHIE)
+# main.py - VERSION 8.07 (ACCUEIL "BOITE BLANCHE" & TERMINOLOGIE EXACTE)
 import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+import matplotlib.patheffects as path_effects
 import streamlit.components.v1 as components
 import os
 from scipy.ndimage import shift, gaussian_filter
@@ -16,7 +17,7 @@ import physique as phy
 from anatomie import AdvancedMRIProcessor, HAS_NILEARN
 
 # CONFIG & CSS
-st.set_page_config(layout="wide", page_title="Magnetovault V7.98 - Final")
+st.set_page_config(layout="wide", page_title="Magnetovault V8.07")
 utils.inject_css()
 
 # --- STATE MANAGEMENT ---
@@ -26,6 +27,7 @@ if 'init' not in st.session_state:
     st.session_state.atrophy_active = False 
     st.session_state.tr_force = 500.0
     st.session_state.widget_tr = 500.0
+    st.session_state.mem_turbo = 1 
     st.session_state.init = True
 
 # INITIALISATION PROCESSEUR
@@ -49,6 +51,7 @@ except: idx_def = 0
 seq_choix = st.sidebar.selectbox("Séquence", cst.OPTIONS_SEQ, index=idx_def, key=seq_key)
 
 defaults = cst.STD_PARAMS.get(seq_choix, cst.STD_PARAMS["Pondération T1"])
+current_reset_id = st.session_state.reset_count
 
 # LOGIQUE DE CHANGEMENT DE SÉQUENCE
 if seq_choix != st.session_state.seq:
@@ -56,7 +59,7 @@ if seq_choix != st.session_state.seq:
     st.session_state.tr_force = float(defaults['tr'])
     if 'widget_tr' in st.session_state: 
         st.session_state.widget_tr = float(defaults['tr'])
-    te_key_current = f"te_main_{st.session_state.reset_count}"
+    te_key_current = f"te_{current_reset_id}" 
     st.session_state[te_key_current] = float(defaults['te'])
     utils.safe_rerun()
 
@@ -67,8 +70,7 @@ is_swi = "SWI" in seq_choix
 is_mprage = "MP-RAGE" in seq_choix
 is_asl = "ASL" in seq_choix
 
-# Initialisation variables
-current_reset_id = st.session_state.reset_count
+# Paramètres
 ti = 0.0
 te = float(defaults['te'])
 flip_angle = 90
@@ -79,11 +81,9 @@ flip_angle = 90
 st.sidebar.header("1. Géométrie")
 col_ep, col_slice = st.sidebar.columns(2)
 
-# Epaisseur
 ep = col_ep.number_input("Epaisseur (mm)", min_value=1.0, max_value=10.0, value=5.0, step=0.5, key=f"ep_{current_reset_id}")
-# Nb Coupes (Slider limité à 100 pour plus de finesse)
 n_slices = col_slice.slider("Nb Coupes", 1, 100, 20, step=1, key=f"ns_{current_reset_id}")
-# Concaténations
+
 if not is_dwi and not is_mprage:
     n_concats = st.sidebar.select_slider("📚 Concaténations", options=[1, 2, 3, 4], value=1, key=f"concat_{current_reset_id}")
 else: 
@@ -94,7 +94,7 @@ mat = st.sidebar.select_slider("Matrice", options=[64, 128, 256, 512], value=256
 
 st.sidebar.subheader("Réglage Echo")
 if not (is_dwi or is_asl):
-    te = st.sidebar.slider("TE (ms)", 1.0, 300.0, float(defaults['te']), step=1.0, key=f"te_main_{current_reset_id}")
+    te = st.sidebar.slider("TE (ms)", 1.0, 300.0, float(defaults['te']), step=1.0, key=f"te_{current_reset_id}")
 else:
     te = 90.0 if is_dwi else 15.0
 
@@ -168,9 +168,14 @@ else:
 
 st.sidebar.header("3. Options")
 nex = st.sidebar.slider("NEX", 1, 8, 1, key=f"nex_{current_reset_id}")
+
+# --- MÉMOIRE TURBO ---
 turbo = 1
 if not (is_gre or is_dwi or is_swi or is_mprage or is_asl):
-    turbo = st.sidebar.slider("Facteur Turbo", 1, 32, 1, key=f"turbo_{current_reset_id}")
+    def_turbo = st.session_state.mem_turbo
+    turbo = st.sidebar.slider("Facteur Turbo", 1, 32, def_turbo, key=f"turbo_{current_reset_id}")
+    st.session_state.mem_turbo = turbo
+
 bw = st.sidebar.slider("Bande Passante", 50, 500, 220, 10, key=f"bw_{current_reset_id}")
 es = st.sidebar.slider("Espace Inter-Echo (ES)", 2.5, 20.0, 10.0, step=2.5, key=f"es_{current_reset_id}")
 
@@ -181,7 +186,7 @@ ipat_factor = st.sidebar.slider("Facteur R", 2, 4, 2, key=f"ipat_r_{current_rese
 st.sidebar.markdown("---")
 
 # ==============================================================================
-# MENTIONS LÉGALES & BIBLIOGRAPHIE (MIS À JOUR)
+# MENTIONS LÉGALES & BIBLIOGRAPHIE
 # ==============================================================================
 with st.sidebar.expander("🛡️ Mentions Légales & Droits"):
     st.markdown("""
@@ -207,22 +212,19 @@ with st.sidebar.expander("📚 Bibliographie & Crédits"):
     """)
 
 # ==============================================================================
-# CALCULS PHYSIQUES (CORRECTION BUG CONCATS)
+# CALCULS PHYSIQUES
 # ==============================================================================
 tr_effective = tr 
 
 try:
-    # Appel du module physique mis à jour
     raw_ms = phy.calculate_acquisition_time(tr, mat, nex, turbo, ipat_factor, n_concats, n_slices, is_mprage)
 except AttributeError:
-    # FALLBACK DE SÉCURITÉ
     base_time = (tr * mat * nex) / (turbo * ipat_factor)
     if is_mprage: raw_ms = base_time * n_slices
     else: raw_ms = base_time * n_concats
 
 final_seconds = raw_ms / 1000.0; mins = int(final_seconds // 60); secs = int(final_seconds % 60); str_duree = f"{mins} min {secs} s"
 
-# 2. Calcul des SIGNAUX
 v_lcr = phy.calculate_signal(tr_effective, te, ti, cst.T_LCR['T1'], cst.T_LCR['T2'], cst.T_LCR['T2s'], cst.T_LCR['ADC'], cst.T_LCR['PD'], flip_angle, is_gre, is_dwi, b_value if is_dwi else 0)
 v_wm  = phy.calculate_signal(tr_effective, te, ti, cst.T_WM['T1'], cst.T_WM['T2'], cst.T_WM['T2s'], cst.T_WM['ADC'], cst.T_WM['PD'], flip_angle, is_gre, is_dwi, b_value if is_dwi else 0)
 v_gm  = phy.calculate_signal(tr_effective, te, ti, cst.T_GM['T1'], cst.T_GM['T2'], cst.T_GM['T2s'], cst.T_GM['ADC'], cst.T_GM['PD'], flip_angle, is_gre, is_dwi, b_value if is_dwi else 0)
@@ -231,7 +233,6 @@ v_stroke = phy.calculate_signal(tr_effective, te, ti, cst.T_STROKE['T1'], cst.T_
 if is_dwi and b_value >= 1000 and show_stroke: v_stroke = 2.0 
 v_fat = phy.calculate_signal(tr_effective, te, ti, cst.T_FAT['T1'], cst.T_FAT['T2'], cst.T_FAT['T2s'], cst.T_FAT['ADC'], cst.T_FAT['PD'], flip_angle, is_gre, is_dwi, 0) if not is_dwi else 0.0
 
-# 3. Calcul du SNR
 snr_tr_ref = float(defaults['tr']); snr_te_ref = float(defaults['te'])
 v_wm_snr = phy.calculate_signal(snr_tr_ref, snr_te_ref, ti, cst.T_WM['T1'], cst.T_WM['T2'], cst.T_WM['T2s'], cst.T_WM['ADC'], cst.T_WM['PD'], 90, False, False, 0)
 ref_wm_signal = phy.calculate_signal(snr_tr_ref, snr_te_ref, ti, cst.T_WM['T1'], cst.T_WM['T2'], cst.T_WM['T2s'], cst.T_WM['ADC'], cst.T_WM['PD'], 90, False, False, 0)
@@ -265,42 +266,83 @@ final += np.random.normal(0, noise_level, (S,S)); final = np.clip(final, 0, 1.3)
 f = np.fft.fftshift(np.fft.fft2(final)); kspace = 20 * np.log(np.abs(f) + 1)
 
 # --- 13. AFFICHAGE FINAL ---
-st.title("Simulateur MagnétoVault V7.98")
+st.title("Simulateur MagnétoVault V8.07")
 
 t_home, t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12, t13, t14 = st.tabs([
     "🏠 Accueil", "Fantôme", "Espace K 🌀", "Signaux", "Codage", "🧠 Anatomie", 
     "📈 Physique", "⚡ Chronogramme", "☣️ Artefacts", "🚀 iPAT", "🧬 Théorie Diffusion", "🎓 Cours", "🩸 SWI & Dipôle", "3D T1 (MP-RAGE)", "ASL (Perfusion)"
 ])
 
-# [TAB 0 : ACCUEIL]
+# [TAB 0 : ACCUEIL - LA BOITE BLANCHE]
 with t_home:
-    st.header("Bienvenue dans le Simulateur MagnétoVault")
     st.markdown("""
-    **MagnétoVault** est un outil pédagogique interactif conçu pour comprendre la physique et la technique de l'IRM.
-    
-    ---
-    ### 📘 Comment utiliser le simulateur ?
-    #### 1️⃣ La Console de Commande (Barre de Gauche)
-    * **Séquence :** Choisissez le type d'image.
-    * **Géométrie :** Réglez FOV, Matrice, Coupes.
-    * **Chrono :** Ajustez TR, TE.
-    * **Options :** iPAT, BW, **Facteur Turbo**.
-    
-    #### 2️⃣ Les Onglets de Visualisation
-    * **Fantôme :** Votre résultat principal.
-    * **Espace K :** Données brutes.
-    * **🧠 Anatomie :** (Module *nilearn*) Cerveau humain simulé.
-    """)
-    st.info("💡 Sélectionnez l'onglet **'Fantôme'** ci-dessus pour commencer.")
+    <div style="background-color:#1e293b; padding:20px; border-radius:10px; margin-bottom:20px;">
+        <h1 style="color:white; margin:0;">🧲 MagnétoVault Simulator</h1>
+        <h3 style="color:#a5b4fc; margin-top:5px;">La "Boîte Blanche" de l'IRM</h3>
+        <p style="color:#cbd5e1;"><i>"Ne vous contentez pas de voir l'image. Comprenez la mécanique de sa création."</i></p>
+    </div>
+    """, unsafe_allow_html=True)
 
-# [TAB 1 : FANTOME (LÉGENDES ET FORMULES COMPLÈTES)]
+    c_intro1, c_intro2 = st.columns([1, 1])
+    with c_intro1:
+        st.markdown("### 🔍 Pourquoi ce simulateur est unique ?")
+        st.markdown("""
+        La plupart des simulateurs sont des "boîtes noires" : vous rentrez des paramètres, une image sort, mais vous ne savez pas pourquoi.
+        
+        **MagnétoVault est un laboratoire transparent.** Ici, nous ouvrons le capot de la machine pour vous montrer les mathématiques et la physique en action.
+        """)
+    with c_intro2:
+        st.info("""
+        **Objectif :** Faire le lien entre la **Physique** (Spin, Vecteurs), l'**Espace K** (Fourier) et l'**Image Clinique** (Contraste).
+        """)
+
+    st.divider()
+
+    # SECTION 2 : LES PILIERS DU SIMULATEUR (TERMINOLOGIE EXACTE)
+    st.markdown("### 🧪 Ce que vous pouvez explorer")
+    
+    col_p1, col_p2, col_p3 = st.columns(3)
+    
+    with col_p1:
+        st.markdown("#### 1. Mécanique de l'Espace K")
+        st.markdown("""
+        Visualisez l'invisible. Comment la machine remplit-elle les lignes ?
+        * **Facteur Turbo (TSE) :** Voyez comment les trains d'échos sont rangés. Lequel porte le contraste ? Lequel donne les détails ?
+        * **TE Effectif :** Comprenez pourquoi il est placé au centre de l'espace K.
+        """)
+        
+    with col_p2:
+        st.markdown("#### 2. Physique Temps Réel")
+        st.markdown("""
+        Pas d'images pré-calculées. Tout est généré par les équations de Bloch.
+        * **TR & TE :** Modifiez-les et voyez les courbes de relaxation changer.
+        * **iPAT (Imagerie Parallèle) :** Activez le facteur d'accélération et observez la perte de SNR.
+        * **Artefacts :** Créez du Repliement (Aliasing) ou du Décalage Chimique.
+        """)
+        
+    with col_p3:
+        st.markdown("#### 3. Clinique Avancée")
+        st.markdown("""
+        Au-delà du T1/T2 classique. Simulez des séquences complexes :
+        * **Diffusion (DWI) :** Jouez avec le *Facteur b* et la carte *ADC*.
+        * **Perfusion (ASL) :** Comprenez le marquage des spins artériels.
+        * **SWI :** Visualisez la Phase et la Magnitude (Effet dipôle).
+        """)
+
+    st.divider()
+    
+    st.markdown("### 🚀 Guide de Démarrage")
+    st.markdown("""
+    1.  **🎛️ Console (Gauche) :** C'est votre poste de pilotage. Choisissez la **Séquence**, réglez le **FOV**, la **Matrice**, le **TR/TE** et le **Facteur Turbo**.
+    2.  **🌀 Espace K (Onglet 2) :** Regardez comment votre séquence remplit les données brutes.
+    3.  **🧠 Anatomie (Onglet 5) :** Explorez un cerveau humain réel (Atlas *Harvard-Oxford*) et simulez des pathologies (**AVC**, **Atrophie**).
+    """)
+
 with t1:
     c1, c2 = st.columns([1, 1])
     with c1:
         k1, k2 = st.columns(2); k1.metric("⏱️ Durée", str_duree); k2.metric("📉 SNR Relatif", str_snr); st.divider()
         st.subheader("1. Formules & Glossaire")
-        
-        # --- FORMULES MATHÉMATIQUES COMPLETES ---
         if is_dwi: 
             st.markdown("**Formule Diffusion :**")
             st.latex(r"S = S_0 \cdot e^{-b \cdot ADC}")
@@ -314,31 +356,19 @@ with t1:
         st.markdown("**Rapport Signal/Bruit (SNR) :**")
         st.latex(r"SNR \propto V_{vox} \times \sqrt{\frac{N_{Ph} \times NEX}{BW}} \times \frac{1}{g \sqrt{R}}")
         
-        # --- LÉGENDE EXHAUSTIVE DE TOUS LES TERMES ---
-        with st.expander("📖 Glossaire Complet des Termes Affichés", expanded=False):
+        with st.expander("📖 Glossaire Complet", expanded=False):
             st.markdown("""
             | Terme | Signification | Contexte |
             | :--- | :--- | :--- |
-            | **TR** | Temps de Répétition | Temps entre deux excitations (Contrôle le T1 et la durée). |
-            | **TE** | Temps d'Écho | Temps jusqu'à la lecture du signal (Contrôle le T2). |
-            | **TF / Turbo** | Facteur Turbo | Nombre d'échos acquis par TR (Accélère la séquence). |
-            | **$N_{Ph}$** | Lignes de Phase | Nombre de lignes à acquérir (Matrice). |
-            | **$N_{Slices}$** | Nombre de Coupes | En 3D, agit comme une 2ème dimension de phase. |
-            | **NEX** | Nombre d'Excitations | Moyennage pour augmenter le SNR (mais allonge le temps). |
-            | **Concats** | Concaténations | Découpage des coupes en plusieurs paquets (pour TR long). |
-            | **R (iPAT)** | Facteur d'Accélération | Imagerie Parallèle (réduit le temps, réduit le SNR). |
-            | **$V_{vox}$** | Volume du Voxel | Taille du pixel × épaisseur (Le SNR dépend du volume !). |
-            | **BW** | Bande Passante | Vitesse de lecture (BW élevé = Acquisition rapide mais moins de SNR). |
-            | **b** | Facteur b (DWI) | Force du gradient de diffusion ($s/mm^2$). |
-            | **ADC** | Coeff. Diffusion | Capacité de l'eau à bouger (Restriction = Signal élevé en DWI). |
-            | **$S_0$** | Signal de base | Signal T2 sans pondération de diffusion. |
+            | **TR** | Temps de Répétition | Temps entre deux excitations. |
+            | **TE** | Temps d'Écho | Temps jusqu'à la lecture du signal. |
+            | **TF / Turbo** | Facteur Turbo | Nombre d'échos par TR. |
+            | **BW** | Bande Passante | Vitesse de lecture. |
             """)
-        
-        if show_stroke: st.error("⚠️ **PATHOLOGIE : AVC Ischémique (Zone Rouge)**")
+        if show_stroke: st.error("⚠️ **PATHOLOGIE : AVC Ischémique**")
         if show_atrophy: st.warning("🧠 **PATHOLOGIE : Atrophie (Alzheimer)**")
 
     with c2:
-        # VISUEL FANTÔME
         fig_anot, ax_anot = plt.subplots(figsize=(5,5))
         ax_anot.imshow(final, cmap='gray', vmin=0, vmax=1.3)
         ax_anot.axis('off')
@@ -349,44 +379,69 @@ with t1:
         st.pyplot(fig_anot)
         plt.close(fig_anot)
 
-# [TAB 2 : ESPACE K (VISUALISATION AVEC TE RÉEL)]
+# [TAB 2 : ESPACE K]
 with t2:
     st.markdown("### 🌀 Espace K et Remplissage")
     col_k1, col_k2 = st.columns([1, 1])
+    
     with col_k1:
+        # Contrôles
         fill_mode = st.radio("Ordre de Remplissage", ["Linéaire (Haut -> Bas)", "Centrique (Centre -> Bords)"], key=f"k_mode_{current_reset_id}")
         acq_pct = st.slider("Progression (%)", 0, 100, 10, step=1, key=f"k_pct_{current_reset_id}")
+        st.divider()
         
-        # --- VISUALISATION DU RANGEMENT TSE AVEC TE RÉEL ---
+        # --- VISUALISATION TURBO ---
         if turbo > 1:
-            st.divider()
-            st.markdown(f"#### 🚅 Train d'Échos (Facteur {turbo})")
-            st.caption(f"Espace Inter-Echo (ES) : {es} ms")
+            st.markdown(f"#### 🚅 Rangement des {turbo} Échos (Ky)")
+            st.info(f"TE Cible : **{int(te)} ms** | Facteur Turbo : **{turbo}**")
             
-            fig_tse, ax_tse = plt.subplots(figsize=(5, 3))
-            n_lines = 32 
-            colors = plt.cm.jet(np.linspace(0, 1, turbo))
+            echo_data = []
+            for i in range(turbo):
+                te_real = (i + 1) * es; delta = abs(te_real - te)
+                echo_data.append({"id": i + 1, "te": te_real, "delta": delta})
             
-            for i in range(n_lines):
-                dist_from_center = abs(i - n_lines/2)
-                norm_dist = dist_from_center / (n_lines/2)
-                echo_idx = int(norm_dist * (turbo-1))
-                if echo_idx >= turbo: echo_idx = turbo - 1
-                ax_tse.hlines(i, 0, 1, colors=colors[echo_idx], linewidth=2)
+            effective_echo = min(echo_data, key=lambda x: x['delta'])
+            sorted_by_relevance = sorted(echo_data, key=lambda x: x['delta'])
+            k_space_slots = [None] * turbo; center_idx = turbo // 2
             
-            # --- MODIFICATION ICI : AFFICHER LE TE RÉEL ---
-            for e in range(turbo):
-                # Calcul du TE de l'écho e : (Numéro d'écho) * ES
-                te_val_echo = (e + 1) * es
-                ax_tse.text(1.05, e * (n_lines/turbo), f"TE={int(te_val_echo)}ms", color=colors[e], fontweight='bold', fontsize=9)
-                
-            ax_tse.set_yticks([]); ax_tse.set_xticks([])
-            ax_tse.set_title(f"Contribution des échos au Contraste (Ky)", fontsize=9)
-            ax_tse.spines['top'].set_visible(False); ax_tse.spines['right'].set_visible(False)
-            ax_tse.spines['bottom'].set_visible(False); ax_tse.spines['left'].set_visible(False)
-            ax_tse.set_ylabel("K-Space (Ky)")
-            ax_tse.axhline(n_lines/2, color='black', linestyle='--', linewidth=1)
-            ax_tse.text(0.5, n_lines/2 + 1, "Centre (Contraste)", ha='center', fontsize=8)
+            for i, echo in enumerate(sorted_by_relevance):
+                if i % 2 == 0: offset = i // 2
+                else: offset = -((i // 2) + 1)
+                target_slot = center_idx + offset
+                if 0 <= target_slot < turbo: k_space_slots[target_slot] = echo
+                else:
+                    for k in range(turbo):
+                        if k_space_slots[k] is None: k_space_slots[k] = echo; break
+
+            fig_tse, ax = plt.subplots(figsize=(5, 4))
+            y_height = 1.0 / turbo
+            for idx, echo in enumerate(k_space_slots):
+                if echo is None: continue
+                color_val = (echo['id'] - 1) / max(1, (turbo - 1)); color = plt.cm.jet(color_val)
+                is_eff = (echo['id'] == effective_echo['id'])
+                rect = patches.Rectangle((0, 1.0 - (idx + 1) * y_height), 1, y_height, linewidth=3 if is_eff else 0.5, edgecolor='black' if is_eff else 'white', facecolor=color)
+                ax.add_patch(rect)
+                label = f"Echo {echo['id']} (TE={int(echo['te'])}ms)"; 
+                if is_eff: label += " ★"
+                ax.text(0.5, 1.0 - (idx + 0.5) * y_height, label, ha='center', va='center', color='white', fontweight='bold', path_effects=[path_effects.withStroke(linewidth=2, foreground='black')])
+
+            ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.axis('off')
+            ax.text(-0.05, 0.5, "CENTRE (K=0)", ha='right', va='center', fontweight='bold')
+            ax.annotate("", xy=(-0.02, 0.4), xytext=(-0.02, 0.6), arrowprops=dict(arrowstyle="-", color="black", lw=2))
+            
+            st.pyplot(fig_tse)
+            plt.close(fig_tse)
+        
+        else:
+            st.markdown(f"#### 🐢 Acquisition Standard (1 Écho/TR)")
+            st.info(f"TE Unique : **{int(te)} ms**")
+            fig_tse, ax = plt.subplots(figsize=(5, 4))
+            n_disp_lines = 24; y_h = 1.0 / n_disp_lines; color = plt.cm.jet(0)
+            for i in range(n_disp_lines):
+                rect = patches.Rectangle((0, 1.0 - (i + 1) * y_h), 1, y_h, linewidth=0.5, edgecolor='white', facecolor=color)
+                ax.add_patch(rect)
+            ax.text(0.5, 0.5, f"ECHO 1 (TE={int(te)}ms)\nAppliqué à chaque ligne", ha='center', va='center', color='white', fontweight='bold', fontsize=12, path_effects=[path_effects.withStroke(linewidth=3, foreground='black')])
+            ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.axis('off')
             
             st.pyplot(fig_tse)
             plt.close(fig_tse)
@@ -396,7 +451,12 @@ with t2:
         if "Linéaire" in fill_mode: mask_k[0:lines_to_fill, :] = 1
         else: center_line = S // 2; half = lines_to_fill // 2; mask_k[center_line-half:center_line+half, :] = 1
         kspace_masked = f * mask_k; img_rec = np.abs(np.fft.ifft2(np.fft.ifftshift(kspace_masked)))
-        fig_k, ax_k = plt.subplots(figsize=(4, 4)); ax_k.imshow(20 * np.log(np.abs(kspace_masked) + 1), cmap='inferno'); ax_k.axis('off'); st.pyplot(fig_k); plt.close(fig_k); st.image(img_rec, clamp=True, width=300)
+        
+        fig_k, ax_k = plt.subplots(figsize=(4, 4))
+        ax_k.imshow(20 * np.log(np.abs(kspace_masked) + 1), cmap='inferno'); ax_k.axis('off')
+        st.pyplot(fig_k)
+        plt.close(fig_k)
+        st.image(img_rec, clamp=True, width=300, caption="Reconstruction")
 
 with t3:
     st.markdown("### 📊 Comparaison des Signaux")
@@ -453,29 +513,14 @@ with t5:
 
                 if show_interactive_legends:
                     # MODE INTERACTIF (PLOTLY)
-                    with st.spinner("Chargement de l'Atlas Anatomique..."):
+                    with st.spinner("Génération de la carte anatomique..."):
                         labels_map = processor.get_anatomical_labels(ax, idx)
-                        fig = px.imshow(
-                            img_display, 
-                            color_continuous_scale='gray', 
-                            zmin=0, zmax=1,
-                            binary_string=False
-                        )
-                        fig.update_traces(
-                            customdata=labels_map,
-                            hovertemplate="<b>%{customdata}</b><br>Intensité: %{z:.2f}<extra></extra>"
-                        )
-                        fig.update_layout(
-                            margin=dict(l=0, r=0, t=0, b=0),
-                            coloraxis_showscale=False,
-                            width=600, height=600,
-                            xaxis=dict(showticklabels=False, showgrid=False, zeroline=False),
-                            yaxis=dict(showticklabels=False, showgrid=False, zeroline=False)
-                        )
+                        fig = px.imshow(img_display, color_continuous_scale='gray', zmin=0, zmax=1, binary_string=False)
+                        fig.update_traces(customdata=labels_map, hovertemplate="<b>%{customdata}</b><br>Signal: %{z:.2f}<extra></extra>")
+                        fig.update_layout(margin=dict(l=0, r=0, t=0, b=0), coloraxis_showscale=False, width=600, height=600, xaxis=dict(showticklabels=False), yaxis=dict(showticklabels=False))
                         st.plotly_chart(fig, config={'displayModeBar': False})
-                        st.caption("ℹ️ Source: Atlas Harvard-Oxford (Cortical & Sous-cortical).")
+                        st.caption("ℹ️ Passez la souris sur l'image pour voir les structures.")
                 else:
-                    # MODE RAPIDE (STANDARD)
                     st.image(img_display, clamp=True, width=600)
     else: 
         st.warning("Module 'nilearn' manquant ou données non chargées.")
