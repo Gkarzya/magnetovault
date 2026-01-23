@@ -1313,10 +1313,11 @@ with t14:
                     im = ax_perf.imshow(perf_map, cmap='jet', vmin=0, vmax=np.max(perf_map)*0.8); ax_perf.axis('off'); st.pyplot(fig_perf); st.caption("3. Carte de Perfusion")
     else: st.warning("Module Anatomique requis.")
 
-# [TAB 15 : SUPPRESSION DE GRAISSE - VERSION FINALE DÉFINITIVE]
+# [TAB 15 : SUPPRESSION DE GRAISSE - VERSION UNIQUE ET NETTOYÉE]
 with t15:
     st.header("🍔 Suppression de Graisse (Fat Sat)")
-    # Suppression définitive de l'onglet "Expert RF"
+    
+    # Menu des techniques
     fs_tabs = st.tabs(["1. Saturation Fréquentielle", "2. Séquence SPAIR", "3. Séquence Dixon", "4. Excitation Eau", "5. Soustraction", "6. Séquence STIR"])
     
     # --- 1. FAT SAT (SATURATION FRÉQUENTIELLE) ---
@@ -1325,45 +1326,67 @@ with t15:
         c_fs1, c_fs2 = st.columns([1, 2])
         with c_fs1:
             st.markdown("##### 🎛️ Paramètres Aimant")
-            b0_fs = st.select_slider("Champ Magnétique B0 (Tesla)", options=[0.5, 1.5, 3.0], value=1.5, key="fs_b0_v_final_d")
+            b0_fs = st.select_slider("Champ Magnétique B0 (Tesla)", options=[0.5, 1.5, 3.0], value=1.5, key="fs_b0_clean")
             ppm_val = 3.5; larmor_h = 42.58; shift_hz = int(larmor_h * b0_fs * ppm_val)
             st.info(f"**Écart Eau-Graisse :** {shift_hz} Hz (à {b0_fs}T)")
+            
             st.markdown("**Perturbation (Métal / Shimming)**")
-            drift = st.slider("Décalage Fréquentiel (Hz)", -300, 300, 0, 10, key="fs_drift_v_final_d")
+            drift = st.slider("Décalage Fréquentiel (Hz)", -300, 300, 0, 10, key="fs_drift_clean")
+            
             if abs(drift) > 80: st.error("🚨 **ECHEC FATSAT**")
             elif drift != 0: st.warning(f"⚠️ Dérive de {drift} Hz")
 
         with c_fs2:
             fig_fs, ax_fs = plt.subplots(figsize=(8, 4))
             x_min, x_max = -1200, 400; freq_range = np.linspace(x_min, x_max, 1000)
-            rf_target = -shift_hz; real_fat = -shift_hz + drift; real_water = 0 + drift
-            water_curve = gaussian(freq_range, real_water, 30, 1.0); fat_curve = gaussian(freq_range, real_fat, 40, 0.8)
+            
+            rf_target = -shift_hz
+            real_fat = -shift_hz + drift
+            real_water = 0 + drift
+            
+            water_curve = gaussian(freq_range, real_water, 30, 1.0)
+            fat_curve = gaussian(freq_range, real_fat, 40, 0.8)
+            
             ax_fs.fill_between(freq_range, water_curve, color='#3498db', alpha=0.6, label='Eau')
             ax_fs.fill_between(freq_range, fat_curve, color='#ff7f0e', alpha=0.6, label='Graisse')
+            
             rf_bw = 100
             ax_fs.axvspan(rf_target - rf_bw/2, rf_target + rf_bw/2, color='#2ecc71', alpha=0.4, label='RF Machine')
+            
             ax_fs.plot([real_fat, real_fat], [0, 0.8], color='#e67e22', linestyle='--', linewidth=1.5)
             ax_fs.plot([rf_target, rf_target], [0, 0.8], color='green', linestyle=':', linewidth=1.5)
+            
+            # Annotation 3.5 ppm
+            arrow_y = 0.65
+            ax_fs.annotate("", xy=(real_fat, arrow_y), xytext=(real_water, arrow_y), 
+                           arrowprops=dict(arrowstyle="<->", color="black", lw=1.5))
+            ax_fs.text((real_fat + real_water)/2, arrow_y + 0.05, "δ = 3.5 ppm", 
+                       ha='center', va='bottom', fontweight='bold', fontsize=10, color='black')
+
             if drift != 0:
                 ax_fs.annotate("", xy=(real_fat, 0.4), xytext=(rf_target, 0.4), arrowprops=dict(arrowstyle="<->", color="red", lw=2))
                 ax_fs.text((real_fat + rf_target)/2, 0.45, f"Décalage {abs(drift)} Hz", color='red', ha='center', fontweight='bold', fontsize=9)
+            
             dist = abs(real_fat - rf_target)
             title = "✅ SATURATION RÉUSSIE" if dist < 40 else "❌ SATURATION RATÉE (Inhomogénéité)"
             ax_fs.set_title(title, color='green' if dist < 40 else 'red', fontweight='bold')
             ax_fs.set_xlim(x_min, x_max); ax_fs.set_yticks([]); ax_fs.set_xlabel("Fréquence (Hz)"); ax_fs.legend(loc='upper left'); ax_fs.grid(True, alpha=0.3)
             st.pyplot(fig_fs); plt.close(fig_fs)
 
-    # --- 2. SPAIR ---
+    # --- 2. SPAIR (ANIMATION COMPLETE & TI ORIGINAL) ---
     with fs_tabs[1]:
+        import time
         st.subheader("2. SPAIR (Spectral Adiabatic Inversion Recovery)")
         col_bilan1, col_bilan2 = st.columns([1, 1])
         with col_bilan1: st.success("✅ **Points Clés :** Adiabatique (Sweep), Homogène, SAR faible.")
         with col_bilan2: st.info("🛡️ **Compatible Gado :** L'eau n'est PAS inversée.")
         st.divider()
+        
+        # --- A. DYNAMIQUE TEMPORELLE (TI) ---
         st.markdown("#### 📉 A. Dynamique Temporelle (TI)")
         c_sp1, c_sp2 = st.columns([1, 2])
         with c_sp1:
-            ti_spair = st.slider("Temps d'Inversion (TI)", 50, 400, 180, 5, key="spair_ti_v_final_d")
+            ti_spair = st.slider("Temps d'Inversion (TI)", 50, 400, 180, 5, key="spair_ti_clean")
             mz_fat = 1 - 2 * np.exp(-ti_spair/260.0)
             if abs(mz_fat) < 0.1: st.success(f"✅ Graisse Annulée\n({mz_fat:.2f})")
             else: st.warning(f"Graisse Visible\n({mz_fat:.2f})")
@@ -1376,22 +1399,64 @@ with t15:
             ax_sp.annotate('Départ inversé (-1)', xy=(10, -0.9), xytext=(150, -0.8), arrowprops=dict(facecolor='#e67e22', arrowstyle='->'), color='#e67e22')
             ax_sp.set_ylim(-1.1, 1.1); ax_sp.legend(loc='lower right'); ax_sp.grid(True, alpha=0.3)
             st.pyplot(fig_sp); plt.close(fig_sp)
+        
         st.divider()
+        
+        # --- B. PRINCIPE ADIABATIQUE (ANIMATION) ---
         st.markdown("#### 🎯 B. Principe Adiabatique (Le Sweep)")
-        c_rf1, c_rf2 = st.columns([1, 2])
-        f_graisse = -220; bw_rf = 80; offset_shift = bw_rf * 0.8
-        with c_rf1:
-            pos_rf = st.select_slider("Balayage (Sweep)", options=["Début (F < F0)", "Centre (F = F0)", "Fin (F > F0)"], value="Centre (F = F0)")
-            rf_center = f_graisse if "Centre" in pos_rf else (f_graisse - offset_shift if "Début" in pos_rf else f_graisse + offset_shift)
-            st.info("**Le Sweep (Balayage) :** L'impulsion balaie une plage de fréquences pour retourner l'aimantation progressivement et totalement.")
-        with c_rf2:
-            fig_s, ax_s = plt.subplots(figsize=(8, 3))
-            x_f = np.linspace(-600, 200, 1000); fat_p = gaussian(x_f, f_graisse, 30, 0.8); water_p = gaussian(x_f, 0, 30, 1.0)
-            ax_s.fill_between(x_f, fat_p, color='orange', alpha=0.6); ax_s.fill_between(x_f, water_p, color='#3498db', alpha=0.6)
-            ax_s.axvspan(rf_center - bw_rf/2, rf_center + bw_rf/2, ymin=0, ymax=1, color='#2ecc71', alpha=0.4)
-            ax_s.annotate("Sweep Adiabatique", xy=(rf_center, 1.05), xytext=(rf_center, 1.3), arrowprops=dict(facecolor='#2ecc71', arrowstyle='simple'), ha='center', color='#2ecc71')
-            ax_s.set_xlim(-500, 100); ax_s.set_ylim(0, 1.4); ax_s.set_yticks([]); ax_s.set_facecolor('#262730')
-            st.pyplot(fig_s); plt.close(fig_s)
+        c_anim_ctrl, c_anim_plot = st.columns([1, 2])
+        
+        # Paramètres fixes
+        f_water = 0; f_fat = -220; bw_pulse = 60 
+        
+        def draw_spair_spectrum(pulse_center, label_pulse):
+            fig, ax = plt.subplots(figsize=(8, 4))
+            x = np.linspace(-800, 200, 1000)
+            water = gaussian(x, f_water, 30, 1.0)
+            fat = gaussian(x, f_fat, 40, 0.8)
+            ax.fill_between(x, water, color='#3498db', alpha=0.6, label='Eau')
+            ax.fill_between(x, fat, color='#ff7f0e', alpha=0.6, label='Graisse')
+            
+            # Flèche 3.5 ppm
+            arrow_y = 0.65
+            ax.annotate("", xy=(f_fat, arrow_y), xytext=(f_water, arrow_y), arrowprops=dict(arrowstyle="<->", color="black", lw=1.5))
+            ax.text((f_fat + f_water)/2, arrow_y + 0.05, "δ = 3.5 ppm", ha='center', va='bottom', fontweight='bold', fontsize=10, color='black')
+            
+            # Bande verte
+            ax.axvspan(pulse_center - bw_pulse/2, pulse_center + bw_pulse/2, color='#2ecc71', alpha=0.5, label='Impulsion Adiabatique')
+            ax.text(pulse_center, 1.1, label_pulse, ha='center', color='#27ae60', fontweight='bold')
+            ax.annotate("", xy=(pulse_center, 1.0), xytext=(pulse_center, 1.08), arrowprops=dict(arrowstyle="->", color="#27ae60", lw=2))
+
+            ax.set_xlim(-600, 200); ax.set_ylim(0, 1.3); ax.set_yticks([]); ax.set_xlabel("Fréquence (Hz)")
+            ax.legend(loc='upper left'); ax.set_title("Spectre SPAIR : Balayage en Fréquence", fontweight='bold')
+            ax.grid(True, alpha=0.3)
+            ax.set_facecolor('white')
+            return fig
+
+        with c_anim_ctrl:
+            st.info("**Le Balayage :** L'impulsion traverse **tout** le pic de graisse (de gauche à droite).")
+            start_anim = st.button("▶️ Lancer le Balayage", type="primary")
+            if not start_anim:
+                manual_pos = st.select_slider("Position", options=["Base Gauche", "Sommet", "Base Droite"], value="Sommet")
+
+        with c_anim_plot:
+            graph_placeholder = st.empty()
+            if start_anim:
+                # Traversée complète : Base Gauche -> Base Droite
+                start_freq = f_fat - 100; end_freq = f_fat + 100
+                steps = np.linspace(start_freq, end_freq, 30)
+                for freq in steps:
+                    fig = draw_spair_spectrum(freq, "Balayage...")
+                    graph_placeholder.pyplot(fig); plt.close(fig)
+                    time.sleep(0.04)
+                fig = draw_spair_spectrum(end_freq, "Fin du Pulse")
+                graph_placeholder.pyplot(fig); plt.close(fig)
+            else:
+                if manual_pos == "Base Gauche": center = f_fat - 100
+                elif manual_pos == "Base Droite": center = f_fat + 100
+                else: center = f_fat
+                fig = draw_spair_spectrum(center, "Impulsion Adiabatique")
+                graph_placeholder.pyplot(fig); plt.close(fig)
 
     # --- 3. DIXON ---
     with fs_tabs[2]:
@@ -1399,7 +1464,7 @@ with t15:
         st.markdown("#### 📡 A. L'Acquisition (2 Échos)")
         c_dx1, c_dx2 = st.columns([1, 2])
         with c_dx1:
-            te_dixon = st.select_slider("Choisir le Temps d'Echo (TE)", options=[2.2, 4.5], key="dx_te_restricted_final")
+            te_dixon = st.select_slider("Choisir le Temps d'Echo (TE)", options=[2.2, 4.5], key="dx_te_clean")
             if te_dixon == 2.2:
                 st.error("📉 **OUT OF PHASE (Opposition)**"); st.write("Eau et Graisse s'opposent."); st.latex(r"S = E - G")
             else:
@@ -1420,131 +1485,46 @@ with t15:
 
     # --- 4. EXCITATION EAU ---
     with fs_tabs[3]:
-        import pandas as pd # Correction : Importation nécessaire pour le tableau
+        import pandas as pd 
         st.subheader("4. Excitation de l'Eau (Water Excitation / WE)")
-
-        # 1. SYNTHÈSE PÉDAGOGIQUE
         st.markdown("#### 🌊 Principe : Sélection sans Saturation")
-        
         c_we_txt, c_we_acro = st.columns([2, 1])
-        
         with c_we_txt:
             st.info("""
             **Différence avec la Fat-Sat :**
             * **Fat-Sat :** Excite la graisse puis la tue (Gradient de déphasage).
-            * **WE (Water Excitation) :** N'utilise **pas de gradient de déphasage**. Elle stimule sélectivement l'eau en laissant la graisse tranquille (au repos).
+            * **WE (Water Excitation) :** N'utilise **pas de gradient de déphasage**. Elle stimule sélectivement l'eau en laissant la graisse tranquille.
             """)
-            
             st.markdown("""
             **La Séquence Binomiale (1-1) :**
-            Au lieu d'une impulsion unique de 90°, on utilise une **paire d'impulsions de 45°** séparées par un délai précis :
-            1.  **Pulse 45° :** Tout le monde bascule.
-            2.  **Délai :** On attend que la Graisse et l'Eau soient en **opposition de phase (180°)**.
-            3.  **Pulse 45° :** L'Eau s'additionne ($45+45=90^\circ$), la Graisse se soustrait ($45-45=0^\circ$).
+            1. **Pulse 45° :** Tout le monde bascule.
+            2. **Délai :** On attend l'opposition de phase (180°).
+            3. **Pulse 45° :** L'Eau s'additionne (90°), la Graisse se soustrait (0°).
             """)
-            
-            st.success("""
-            **✅ Avantages majeurs :**
-            * **Insensible aux inhomogénéités B1 :** L'annulation dépend du *timing* (précis), pas de la perfection de l'angle de bascule.
-            * **Rapide :** Pas de temps d'attente d'inversion ni de gradient de suppression.
-            """)
-
         with c_we_acro:
             st.markdown("#### 🏷️ Noms Commerciaux")
-            # Création du tableau avec Pandas
-            df_names = pd.DataFrame({
-                "Constructeur": ["Siemens / Fuji", "GE", "Philips", "Canon"],
-                "Acronyme": ["WE", "SSRF", "ProSET", "WET / PASTA"]
-            })
+            df_names = pd.DataFrame({"Constructeur": ["Siemens / Fuji", "GE", "Philips", "Canon"], "Acronyme": ["WE", "SSRF", "ProSET", "WET / PASTA"]})
             st.table(df_names.set_index("Constructeur"))
-
         st.divider()
-
-        # 2. SIMULATEUR 3D (La Danse des Vecteurs)
         st.markdown("#### 🕹️ Visualisation Dynamique (Impulsion 1-1)")
-
-        # Slider temporel
-        step = st.select_slider(
-            "Étapes de la séquence Binomiale",
-            options=[
-                "1. Équilibre (M0)", 
-                "2. Premier Pulse (45°)", 
-                "3. Délai (Opposition 180°)", 
-                "4. Second Pulse (45°)"
-            ],
-            value="1. Équilibre (M0)"
-        )
-
-        # Logique des vecteurs
-        w_vec = np.array([0.0, 0.0, 1.0]) # Eau
-        f_vec = np.array([0.0, 0.0, 1.0]) # Graisse
-        desc = "Aimantation longitudinale (z) alignée avec B0."
-        
+        step = st.select_slider("Étapes", options=["1. Équilibre (M0)", "2. Premier Pulse (45°)", "3. Délai (Opposition 180°)", "4. Second Pulse (45°)"], value="1. Équilibre (M0)")
+        w_vec = np.array([0.0, 0.0, 1.0]); f_vec = np.array([0.0, 0.0, 1.0]); desc = "Aimantation longitudinale (z)."
         if "2." in step:
-            # Pulse 45° sur l'axe X -> Bascule dans plan YZ
-            val = np.sin(np.pi/4) # 0.707
-            w_vec = np.array([0.0, val, val])
-            f_vec = np.array([0.0, val, val])
-            desc = "Première impulsion 45° (Non sélective). Eau et Graisse basculent ensemble."
-            
+            val = np.sin(np.pi/4); w_vec = np.array([0.0, val, val]); f_vec = np.array([0.0, val, val]); desc = "Pulse 45°. Tout bascule."
         elif "3." in step:
-            # Délai : L'eau reste fixe (référentiel tournant). 
-            # La graisse se déphase de 180° autour de Z.
-            val = np.sin(np.pi/4)
-            w_vec = np.array([0.0, val, val])
-            f_vec = np.array([0.0, -val, val]) # Opposition de phase (Y inversé)
-            desc = "Délai $\\tau$ : Les vecteurs se déphasent de 180° (La graisse s'oppose à l'eau)."
-            
+            val = np.sin(np.pi/4); w_vec = np.array([0.0, val, val]); f_vec = np.array([0.0, -val, val]); desc = "Délai : Opposition de phase."
         elif "4." in step:
-            # Second Pulse 45°.
-            # L'eau (à +45°) prend +45° -> Arrive à 90° (Plan transverse pur)
-            w_vec = np.array([0.0, 1.0, 0.0]) # Couché sur Y
-            # La graisse (à -45° virtuellement) prend +45° -> Remonte à 0° (Axe Z)
-            f_vec = np.array([0.0, 0.0, 1.0]) # Retour sur Z
-            desc = "Seconde impulsion 45°. L'Eau s'additionne (90°), la Graisse revient à l'équilibre (0°)."
-
-        # --- PLOT 3D ---
+            w_vec = np.array([0.0, 1.0, 0.0]); f_vec = np.array([0.0, 0.0, 1.0]); desc = "Pulse 45°. Eau à 90°, Graisse à 0°."
+        
         c_visu1, c_visu2 = st.columns([1, 2])
-
-        with c_visu1:
-            st.info(f"**État :** {desc}")
-            if "4." in step:
-                st.write("💧 **Eau :** Plan Transverse (Signal Max)")
-                st.write("🥓 **Graisse :** Axe Z (Signal Nul)")
-
+        with c_visu1: st.info(f"**État :** {desc}")
         with c_visu2:
-            fig = plt.figure(figsize=(6, 5))
-            ax = fig.add_subplot(111, projection='3d')
-
-            # Dessin du plan transverse (Disque)
-            p = np.linspace(0, 2*np.pi, 50)
-            r = np.linspace(0, 1.2, 2)
-            R, P = np.meshgrid(r, p)
-            X, Y = R*np.cos(P), R*np.sin(P)
-            Z = np.zeros_like(X)
-            ax.plot_surface(X, Y, Z, color='green', alpha=0.1)
-            ax.plot_wireframe(X, Y, Z, color='green', alpha=0.2, rstride=10, cstride=10)
-
-            # Axe Z (B0)
-            ax.plot([0, 0], [0, 0], [-0.2, 1.2], 'k--', linewidth=1, label='B0')
-
-            # Vecteurs
-            # Eau en Bleu
+            fig = plt.figure(figsize=(6, 5)); ax = fig.add_subplot(111, projection='3d')
+            ax.plot([0, 0], [0, 0], [-0.2, 1.2], 'k--', linewidth=1)
             ax.quiver(0, 0, 0, w_vec[0], w_vec[1], w_vec[2], color='#3498db', linewidth=4, arrow_length_ratio=0.1, label='Eau')
-            
-            # Graisse en Orange
-            # Petite astuce visuelle : si les vecteurs sont superposés (étape 1 et 2), on décale un tout petit peu la graisse
-            offset = 0.0
-            if "1." in step or "2." in step: offset = 0.05
+            offset = 0.05 if "1." in step or "2." in step else 0.0
             ax.quiver(offset, 0, 0, f_vec[0], f_vec[1], f_vec[2], color='#e67e22', linewidth=3, arrow_length_ratio=0.1, label='Graisse')
-
-            # Configuration Vue
-            ax.set_xlim(-1, 1); ax.set_ylim(-1, 1); ax.set_zlim(0, 1.2)
-            ax.set_xlabel('X'); ax.set_ylabel('Y'); ax.set_zlabel('Z')
-            ax.set_xticks([]); ax.set_yticks([]); ax.set_zticks([])
-            ax.view_init(elev=20, azim=20) # Vue isométrique
-            ax.legend()
-            
+            ax.set_xlim(-1, 1); ax.set_ylim(-1, 1); ax.set_zlim(0, 1.2); ax.view_init(elev=20, azim=20); ax.legend()
             st.pyplot(fig); plt.close(fig)
 
     # --- 5. SOUSTRACTION ---
@@ -1552,7 +1532,7 @@ with t15:
         st.subheader("5. Soustraction (Post - Pré)")
         c_sub1, c_sub2 = st.columns([1, 2])
         with c_sub1:
-            move_x = st.slider("Mouvement Patient (px)", -10, 10, 0, 1, key="sub_move_final_d")
+            move_x = st.slider("Mouvement Patient (px)", -10, 10, 0, 1, key="sub_move_clean")
             st.info("Le moindre mouvement crée des artefacts.")
         with c_sub2:
             size = 100; y, x = np.ogrid[:size, :size]; center = size // 2
@@ -1564,79 +1544,38 @@ with t15:
             c1, c2, c3 = st.columns(3)
             c1.image(img_pre, caption="Pré", clamp=True); c2.image(img_post, caption="Post", clamp=True); c3.image(np.clip(img_post - img_pre, 0, 1), caption="Sub", clamp=True)
 
-    # --- 6. STIR (CORRIGÉ & MODULÉ) ---
+    # --- 6. STIR ---
     with fs_tabs[5]:
         st.subheader("6. STIR (Short Tau Inversion Recovery)")
-        
-        # 1. EXPLICATION (BANDE LARGE)
         st.markdown("#### 📡 1. Pourquoi \"Non-Sélectif\" ? (Bande Large)")
         col_ex1, col_ex2 = st.columns([2, 1])
-        with col_ex1:
-            st.info("""
-            **Impulsion "Hard Pulse" (Le Marteau) :**
-            Le STIR utilise une impulsion courte qui tape **tout le spectre** (Eau, Graisse, Gado...).
-            """)
+        with col_ex1: st.info("Le STIR utilise une impulsion courte qui tape **tout le spectre** (Eau, Graisse, Gado...).")
         with col_ex2:
             fig_bw, ax_bw = plt.subplots(figsize=(4, 2.5))
             ax_bw.fill_between(np.linspace(-500, 500, 100), 0, 1, color='purple', alpha=0.4)
-            ax_bw.text(0, 0.5, "Bande Large\n(Tout le Spectre)", ha='center', color='purple', fontweight='bold')
-            ax_bw.set_yticks([]); ax_bw.set_xlabel("Fréquence"); ax_bw.set_xlim(-500, 500)
+            ax_bw.text(0, 0.5, "Bande Large", ha='center', color='purple'); ax_bw.set_yticks([]); ax_bw.set_xlim(-500, 500)
             st.pyplot(fig_bw); plt.close(fig_bw)
-
         st.divider()
-
-        # 2. EXPLICATION (TRI T1) - TEXTE CORRIGÉ
-        st.markdown("#### ⏱️ 2. Comprendre le \"Tri par T1\"")
-        st.markdown("Puisque tout le monde est inversé (-180°), on les trie par leur **Vitesse de retour (T1)**.")
-        
-        with st.expander("🏃 L'Analogie de la Course", expanded=True):
-            st.markdown("""
-            * **La Graisse (Sprinter) :** Remonte très vite vers +1.
-            * **L'Eau (Marathonien) :** Remonte lentement.
-            * **L'Astuce :** On attend le moment exact où le Sprinter (Graisse) passe la ligne zéro. **CLIC !** On prend la photo.
-            """)
-
-        st.divider()
-
-        # 3. COURBES (MODULE)
         st.markdown("#### 📉 3. Visualisation (Signal en Module)")
-        st.caption("À droite du graphe : L'échelle de gris de l'image (Module).")
-
         c_st1, c_st2 = st.columns([1, 2])
         with c_st1:
-            ti_stir = st.slider("Choisir le moment du 'CLIC' (TI)", 50, 800, 170, 10, key="st_ti_module_final")
-            mz_fat = 1 - 2 * np.exp(-ti_stir/260.0)
-            mz_gado = 1 - 2 * np.exp(-ti_stir/280.0)
-            
-            st.metric("Signal Graisse (Module)", f"{abs(mz_fat):.2f}")
-            
-            if abs(mz_fat) < 0.1: st.success("✅ **GRAISSE NOIRE**\n(Null Point atteint)")
+            ti_stir = st.slider("Choisir le moment du 'CLIC' (TI)", 50, 800, 170, 10, key="st_ti_clean")
+            mz_fat = 1 - 2 * np.exp(-ti_stir/260.0); mz_gado = 1 - 2 * np.exp(-ti_stir/280.0)
+            st.metric("Signal Graisse", f"{abs(mz_fat):.2f}")
+            if abs(mz_fat) < 0.1: st.success("✅ **GRAISSE NOIRE**")
             else: st.warning("Graisse visible")
-
-            if abs(mz_gado) < 0.2: st.error("🚨 **GADO ANNULÉ**\n(T1 trop proche de la graisse)")
-
+            if abs(mz_gado) < 0.2: st.error("🚨 **GADO ANNULÉ**")
         with c_st2:
             fig_st, (ax_st, ax_bar) = plt.subplots(1, 2, figsize=(8, 4), gridspec_kw={'width_ratios': [30, 1]})
-            plt.subplots_adjust(wspace=0.05)
-            
             t_rng = np.linspace(0, 5000, 500)
             tissues = {'Graisse (260ms)': (260, '#ff7f0e'), 'Gado (280ms)': (280, 'red'), 'SB (790ms)': (790, '#bdc3c7'), 'LCR (4000ms)': (4000, 'cyan')}
-            
             for name, (t1_val, col) in tissues.items():
                 ax_st.plot(t_rng, 1 - 2 * np.exp(-t_rng / t1_val), label=name, color=col)
-            
             ax_st.axhline(0, color='black'); ax_st.axvline(ti_stir, color='green', linewidth=2, label=f'TI ({ti_stir}ms)')
-            ax_st.plot(260*np.log(2), 0, 'o', color='orange')
-            ax_st.set_xlim(0, 5000); ax_st.set_ylim(-1.1, 1.1)
-            ax_st.set_xlabel("Temps (ms)"); ax_st.set_ylabel("Aimantation Mz")
-            ax_st.legend(loc='lower right', fontsize=8); ax_st.grid(True, alpha=0.3)
-            
-            # Barre de Gris
+            ax_st.set_xlim(0, 5000); ax_st.set_ylim(-1.1, 1.1); ax_st.legend(loc='lower right', fontsize=8); ax_st.grid(True, alpha=0.3)
             y_grad = np.linspace(1.1, -1.1, 200).reshape(-1, 1)
             ax_bar.imshow(np.abs(y_grad), aspect='auto', cmap='gray', vmin=0, vmax=1, extent=[0, 1, -1.1, 1.1])
-            ax_bar.set_xticks([]); ax_bar.set_yticks([]); ax_bar.set_title("|Mz|", fontsize=8)
-            ax_bar.plot(0.5, 1 - 2 * np.exp(-ti_stir/260.0), 'o', color='orange', markeredgecolor='white')
-            
+            ax_bar.set_xticks([]); ax_bar.set_yticks([]); ax_bar.plot(0.5, 1 - 2 * np.exp(-ti_stir/260.0), 'o', color='orange', markeredgecolor='white')
             st.pyplot(fig_st); plt.close(fig_st)
 # [TAB 16 : SÉCURITÉ RF - VERSION INTÉGRALE (TOUS TABLEAUX)]
 with t16:
