@@ -501,10 +501,11 @@ with t1:
         st.pyplot(fig_anot)
         plt.close(fig_anot)
 # [TAB 2 : FUSION ESPACE K & CODAGE]
+# C'est ici que la modification demandée se trouve.
 with t2:
     st.header("🌀 Espace K : La Bibliothèque de l'Image")
     
-    # 1. EN-TÊTE PÉDAGOGIQUE
+    # 1. EN-TÊTE PÉDAGOGIQUE (METAPHORE DE LA CHORALE)
     with st.expander("🎶 Comprendre le Codage : L'Analogie de la Chorale", expanded=True):
         c_txt1, c_txt2, c_txt3 = st.columns(3)
         with c_txt1:
@@ -521,54 +522,75 @@ with t2:
     st.markdown("**Résumé :** La Matrice est une grille de bataille navale (Ex: A1, B2). Le Codage (Fréquence et Phase) donne une **adresse unique** à chaque case.")
     st.divider()
     
-    # Création des deux sous-onglets
+    # Création des deux sous-onglets demandés
     sub_tabs = st.tabs(["1. Cycle de Codage (Visualisation)", "2. Espace K (Remplissage)"])
     
     # SOUS-ONGLET 1 : CODAGE (HTML du main1.py)
     with sub_tabs[0]:
         components.html("""<!DOCTYPE html><html><head><style>body{margin:0;padding:5px;font-family:sans-serif;} .box{display:flex;gap:15px;} .ctrl{width:220px;padding:10px;background:#f9f9f9;border:1px solid #ccc;border-radius:8px;} canvas{border:1px solid #ccc;background:#f8f9fa;border-radius:8px;} input{width:100%;} label{font-size:11px;font-weight:bold;display:block;} button{width:100%;padding:8px;background:#4f46e5;color:white;border:none;border-radius:4px;cursor:pointer;}</style></head><body><div class='box'><div class='ctrl'><h4>Codage</h4><label>Freq</label><input type='range' id='f' min='-100' max='100' value='0'><br><label>Phase</label><input type='range' id='p' min='-100' max='100' value='0'><br><label>Coupe</label><input type='range' id='z' min='-100' max='100' value='0'><br><label>Matrice</label><input type='range' id='g' min='5' max='20' value='12'><br><button onclick='rst()'>Reset</button></div><div><canvas id='c1' width='350' height='350'></canvas><canvas id='c2' width='80' height='350'></canvas></div></div><script>const c1=document.getElementById('c1');const x=c1.getContext('2d');const c2=document.getElementById('c2');const z=c2.getContext('2d');const sf=document.getElementById('f');const sp=document.getElementById('p');const sz=document.getElementById('z');const sg=document.getElementById('g');const pd=30;function arrow(ctx,x,y,a,s){const l=s*0.35;ctx.save();ctx.translate(x,y);ctx.rotate(a);ctx.beginPath();ctx.moveTo(-l,0);ctx.lineTo(l,0);ctx.lineTo(l-6,-6);ctx.moveTo(l,0);ctx.lineTo(l-6,6);ctx.strokeStyle='white';ctx.lineWidth=1.5;ctx.stroke();ctx.restore();} function draw(){x.clearRect(0,0,350,350);z.clearRect(0,0,80,350);const fv=parseFloat(sf.value);const pv=parseFloat(sp.value);const zv=parseFloat(sz.value);const gs=parseInt(sg.value);const st=(350-2*pd)/gs;const h=(pd*0.8)*(fv/100);x.fillStyle='rgba(255,0,0,0.3)';if(fv!=0){x.beginPath();x.moveTo(pd,pd/2);x.lineTo(pd,pd/2-h);x.lineTo(350-pd,pd/2+h);x.lineTo(350-pd,pd/2);x.fill();}const w=(pd*0.8)*(pv/100);x.fillStyle='rgba(0,255,0,0.3)';if(pv!=0){x.beginPath();x.moveTo(350-pd/2,pd);x.lineTo(350-pd/2-w,pd);x.lineTo(350-pd/2+w,350-pd);x.lineTo(350-pd/2,350-pd);x.fill();} for(let i=0;i<gs;i++){for(let j=0;j<gs;j++){const cx=pd+i*st+st/2;const cy=pd+j*st+st/2;const ph=(i-gs/2)*(fv/100)*3+(j-gs/2)*(pv/100)*3;const cph=(j-gs/2)*(pv/100);x.strokeStyle='black';x.beginPath();x.arc(cx,cy,st*0.4,0,6.28);x.fillStyle='#94a3b8';x.fill();if(cph>0.01)x.fillStyle='rgba(255,255,0,0.5)';if(cph<-0.01)x.fillStyle='rgba(0,0,255,0.5)';x.fill();arrow(x,cx,cy,ph,st*0.6);}}const yz=175-(zv/100)*150;const gr=z.createLinearGradient(0,0,0,350);gr.addColorStop(0,'red');gr.addColorStop(1,'blue');z.fillStyle=gr;z.fillRect(10,10,20,330);z.strokeStyle='black';z.lineWidth=3;z.beginPath();z.moveTo(10,yz);z.lineTo(70,yz);z.stroke();z.fillStyle='black';z.fillText('Z',35,yz-5);} [sf,sp,sz,sg].forEach(s=>s.addEventListener('input',draw));function rst(){sf.value=0;sp.value=0;sz.value=0;sg.value=12;draw();}draw();</script></body></html>""", height=450)
         st.divider()
-        
-        # NOUVELLE SYNTHESE 3 PILIERS (Validée)
-        st.markdown("### 🧠 Synthèse : De la Localisation à l'Image")
-        col_s1, col_s2, col_s3 = st.columns(3)
-        with col_s1:
-            st.warning("**1. Les Gradients (Le Codage)**")
-            st.markdown("""
-            * **Z (Coupe) :** Sélectionne la tranche.
-            * **X & Y (Fréq/Phase) :** Codent la position des spins.
-            """)
-        with col_s2:
-            st.info("**2. L'Espace K (Fréquences)**")
-            st.markdown("""
-            * Les données de localisation sont stockées sous forme de **Fréquences**.
-            * L'info est **partout** : Chaque point de K contient une part de toute l'image.
-            """)
-        with col_s3:
-            st.success("**3. La Reconstruction**")
-            st.markdown("""
-            * L'Espace K n'est pas l'image.
-            * L'anatomie n'apparaît qu'après la **Transformée de Fourier Inverse**.
-            """)
+        st.markdown("### 🧠 Synthèse : Gradient & Espace K")
+        col_c1, col_c2 = st.columns(2)
+        with col_c1:
+            st.info("**1. Gradient Faible (Lignes Centrales)**")
+            st.markdown("* Peu d'enroulement = Signal Fort.\n* Contraste de l'image.")
+        with col_c2:
+            st.error("**2. Gradient Fort (Lignes Périphériques)**")
+            st.markdown("* Enroulement rapide = Détails fins.\n* Résolution spatiale.")
 
     # SOUS-ONGLET 2 : ESPACE K (Python Matplotlib du main1.py)
     with sub_tabs[1]:
         col_k1, col_k2 = st.columns([1, 1])
         with col_k1:
-            st.markdown("#### Remplissage K")
             fill_mode = st.radio("Ordre de Remplissage", ["Linéaire (Haut -> Bas)", "Centrique (Centre -> Bords)"], key=f"k_mode_{current_reset_id}")
             acq_pct = st.slider("Progression (%)", 0, 100, 10, step=1, key=f"k_pct_{current_reset_id}")
             st.divider()
             if turbo > 1:
+                st.markdown(f"#### 🚅 Rangement des {turbo} Échos (Ky)")
                 st.info(f"TE Cible : **{int(te)} ms** | Facteur Turbo : **{turbo}**")
-                fig_tse, ax = plt.subplots(figsize=(5, 3))
-                for i in range(turbo): ax.hlines(i, 0, 1, colors=plt.cm.jet(i/turbo))
-                ax.axis('off'); ax.set_title("Rangement des Échos"); st.pyplot(fig_tse); plt.close(fig_tse)
+                echo_data = []
+                for i in range(turbo):
+                    te_real = (i + 1) * es; delta = abs(te_real - te)
+                    echo_data.append({"id": i + 1, "te": te_real, "delta": delta})
+                effective_echo = min(echo_data, key=lambda x: x['delta'])
+                sorted_by_relevance = sorted(echo_data, key=lambda x: x['delta'])
+                k_space_slots = [None] * turbo; center_idx = turbo // 2
+                for i, echo in enumerate(sorted_by_relevance):
+                    if i % 2 == 0: offset = i // 2
+                    else: offset = -((i // 2) + 1)
+                    target_slot = center_idx + offset
+                    if 0 <= target_slot < turbo: k_space_slots[target_slot] = echo
+                    else:
+                        for k in range(turbo):
+                            if k_space_slots[k] is None: k_space_slots[k] = echo; break
+                fig_tse, ax = plt.subplots(figsize=(5, 4))
+                y_height = 1.0 / turbo
+                for idx, echo in enumerate(k_space_slots):
+                    if echo is None: continue
+                    color_val = (echo['id'] - 1) / max(1, (turbo - 1)); color = plt.cm.jet(color_val)
+                    is_eff = (echo['id'] == effective_echo['id'])
+                    rect = patches.Rectangle((0, 1.0 - (idx + 1) * y_height), 1, y_height, linewidth=3 if is_eff else 0.5, edgecolor='black' if is_eff else 'white', facecolor=color)
+                    ax.add_patch(rect)
+                    label = f"Echo {echo['id']} (TE={int(echo['te'])}ms)"; 
+                    if is_eff: label += " ★"
+                    ax.text(0.5, 1.0 - (idx + 0.5) * y_height, label, ha='center', va='center', color='white', fontweight='bold', path_effects=[path_effects.withStroke(linewidth=2, foreground='black')])
+                ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.axis('off')
+                ax.text(-0.05, 0.5, "CENTRE (K=0)", ha='right', va='center', fontweight='bold')
+                ax.annotate("", xy=(-0.02, 0.4), xytext=(-0.02, 0.6), arrowprops=dict(arrowstyle="-", color="black", lw=2))
+                st.pyplot(fig_tse)
+                plt.close(fig_tse)
             else:
+                st.markdown(f"#### 🐢 Acquisition Standard (1 Écho/TR)")
                 st.info(f"TE Unique : **{int(te)} ms**")
-                fig_tse, ax = plt.subplots(figsize=(5, 3))
-                ax.hlines(0, 0, 1, colors='blue'); ax.axis('off')
-                st.pyplot(fig_tse); plt.close(fig_tse)
+                fig_tse, ax = plt.subplots(figsize=(5, 4))
+                n_disp_lines = 24; y_h = 1.0 / n_disp_lines; color = plt.cm.jet(0)
+                for i in range(n_disp_lines):
+                    rect = patches.Rectangle((0, 1.0 - (i + 1) * y_h), 1, y_h, linewidth=0.5, edgecolor='white', facecolor=color)
+                    ax.add_patch(rect)
+                ax.text(0.5, 0.5, f"ECHO 1 (TE={int(te)}ms)\nAppliqué à chaque ligne", ha='center', va='center', color='white', fontweight='bold', fontsize=12, path_effects=[path_effects.withStroke(linewidth=3, foreground='black')])
+                ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.axis('off')
+                st.pyplot(fig_tse)
+                plt.close(fig_tse)
         with col_k2:
             mask_k = np.zeros((S, S)); lines_to_fill = int(S * (acq_pct / 100.0))
             if "Linéaire" in fill_mode: mask_k[0:lines_to_fill, :] = 1
