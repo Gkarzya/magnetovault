@@ -1,4 +1,3 @@
-# main.py - VERSION 8.07 (ACCUEIL "BOITE BLANCHE" & TERMINOLOGIE EXACTE)
 import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
@@ -17,8 +16,31 @@ import physique as phy
 from anatomie import AdvancedMRIProcessor, HAS_NILEARN
 
 # CONFIG & CSS
-st.set_page_config(layout="wide", page_title="Magnetovault V8.07")
+st.set_page_config(layout="wide", page_title="Magnetovault V8.38")
 utils.inject_css()
+plt.style.use('seaborn-v0_8-whitegrid')
+
+# --- FONCTIONS UTILITAIRES ---
+def gaussian(x: np.ndarray, mu: float, sigma: float, amp: float) -> np.ndarray:
+    """Génère un profil spectral gaussien (Fat Sat)."""
+    return amp * np.exp(-0.5 * ((x - mu) / sigma)**2)
+
+def make_phantom_subtraction(offset_x: float) -> tuple[np.ndarray, np.ndarray]:
+    """Génère un fantôme simple pour tester la soustraction."""
+    size = 100
+    y, x = np.ogrid[:size, :size]
+    center = size // 2
+    fat_mask = np.sqrt((x - (center + offset_x))**2 + (y - center)**2) < 35
+    lesion_mask = np.sqrt((x - (center + offset_x))**2 + (y - center)**2) < 8
+    img = np.zeros((size, size))
+    img[fat_mask] = 1.0
+    return img, lesion_mask
+
+def generate_sensitivity_map(shape, center_x, center_y, sigma):
+    """Génère une carte de sensibilité d'antenne."""
+    y, x = np.ogrid[:shape[0], :shape[1]]
+    mask = np.exp(-((x - center_x)**2 + (y - center_y)**2) / (2 * sigma**2))
+    return mask
 
 # --- STATE MANAGEMENT ---
 if 'init' not in st.session_state:
@@ -266,14 +288,30 @@ final += np.random.normal(0, noise_level, (S,S)); final = np.clip(final, 0, 1.3)
 f = np.fft.fftshift(np.fft.fft2(final)); kspace = 20 * np.log(np.abs(f) + 1)
 
 # --- 13. AFFICHAGE FINAL ---
-st.title("Simulateur MagnétoVault V8.07")
+st.title("Simulateur MagnétoVault V8.38")
 
-t_home, t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12, t13, t14 = st.tabs([
-    "🏠 Accueil", "Fantôme", "Espace K 🌀", "Signaux", "Codage", "🧠 Anatomie", 
-    "📈 Physique", "⚡ Chronogramme", "☣️ Artefacts", "🚀 iPAT", "🧬 Théorie Diffusion", "🎓 Cours", "🩸 SWI & Dipôle", "3D T1 (MP-RAGE)", "ASL (Perfusion)"
+# ONGLETS (16 onglets : V8.38 + Sécurité)
+# Note : t4 est sauté comme dans votre demande (Fusion Espace K & Codage)
+t_home, t1, t2, t3, t5, t6, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16 = st.tabs([
+    "🏠 Accueil", 
+    "Fantôme", 
+    "🌀 Espace K & Codage", 
+    "Signaux", 
+    "🧠 Anatomie", 
+    "📈 Physique", 
+    "⚡ Chronogramme", 
+    "☣️ Artefacts", 
+    "🚀 Imagerie Parallèle", 
+    "🧬 Diffusion", 
+    "🎓 Cours", 
+    "🩸 SWI & Dipôle", 
+    "3D T1 (MP-RAGE)", 
+    "ASL (Perfusion)", 
+    "🍔 Fat Sat",
+    "🔥 Sécurité (SAR/B1+RMS)"
 ])
 
-# [TAB 0 : ACCUEIL - LA BOITE BLANCHE]
+# [TAB 0 : ACCUEIL]
 with t_home:
     st.markdown("""
     <div style="background-color:#1e293b; padding:20px; border-radius:10px; margin-bottom:20px;">
@@ -298,9 +336,7 @@ with t_home:
 
     st.divider()
 
-    # SECTION 2 : LES PILIERS DU SIMULATEUR (TERMINOLOGIE EXACTE)
     st.markdown("### 🧪 Ce que vous pouvez explorer")
-    
     col_p1, col_p2, col_p3 = st.columns(3)
     
     with col_p1:
@@ -310,7 +346,6 @@ with t_home:
         * **Facteur Turbo (TSE) :** Voyez comment les trains d'échos sont rangés. Lequel porte le contraste ? Lequel donne les détails ?
         * **TE Effectif :** Comprenez pourquoi il est placé au centre de l'espace K.
         """)
-        
     with col_p2:
         st.markdown("#### 2. Physique Temps Réel")
         st.markdown("""
@@ -319,7 +354,6 @@ with t_home:
         * **iPAT (Imagerie Parallèle) :** Activez le facteur d'accélération et observez la perte de SNR.
         * **Artefacts :** Créez du Repliement (Aliasing) ou du Décalage Chimique.
         """)
-        
     with col_p3:
         st.markdown("#### 3. Clinique Avancée")
         st.markdown("""
@@ -330,19 +364,95 @@ with t_home:
         """)
 
     st.divider()
-    
     st.markdown("### 🚀 Guide de Démarrage")
     st.markdown("""
     1.  **🎛️ Console (Gauche) :** C'est votre poste de pilotage. Choisissez la **Séquence**, réglez le **FOV**, la **Matrice**, le **TR/TE** et le **Facteur Turbo**.
     2.  **🌀 Espace K (Onglet 2) :** Regardez comment votre séquence remplit les données brutes.
     3.  **🧠 Anatomie (Onglet 5) :** Explorez un cerveau humain réel (Atlas *Harvard-Oxford*) et simulez des pathologies (**AVC**, **Atrophie**).
     """)
+    # ... (Votre code actuel de l'accueil reste au-dessus inchangé) ...
 
+    st.divider()
+    
+    # --- GLOSSAIRE DÉPLOYABLE (A RAJOUTER À LA FIN) ---
+    with st.expander("📖 Glossaire Complet (Variables & Formules)", expanded=False):
+        
+        # 1. PHYSIQUE FONDAMENTALE
+        st.markdown("### 🧲 1. Physique Fondamentale")
+        col_phy1, col_phy2 = st.columns(2)
+        with col_phy1:
+            st.markdown("""
+            * **$B_0$ (Tesla)** : Champ magnétique statique principal.
+            * **$\gamma$ (Gamma)** : Rapport gyromagnétique (42.58 MHz/T).
+            * **$\omega_0$ (Hz)** : Fréquence de Larmor ($\omega_0 = \gamma B_0$).
+            """)
+        with col_phy2:
+            st.markdown("""
+            * **$M_0$** : Aimantation nette à l'équilibre.
+            * **$M_z$** : Aimantation longitudinale (T1).
+            * **$M_{xy}$** : Aimantation transversale (T2).
+            """)
+
+        st.markdown("---")
+
+        # 2. PROPRIÉTÉS TISSULAIRES
+        st.markdown("### 🧠 2. Propriétés Tissulaires")
+        col_tis1, col_tis2 = st.columns(2)
+        with col_tis1:
+            st.markdown("""
+            * **$T1$ (ms)** : Relaxation longitudinale (Spin-Réseau).
+            * **$T2$ (ms)** : Relaxation transversale (Spin-Spin).
+            """)
+        with col_tis2:
+            st.markdown("""
+            * **$T2^*$ (ms)** : T2 réel + Inhomogénéités de champ.
+            * **$\rRho$ (DP)** : Densité de Protons (quantité d'H+).
+            """)
+
+        st.markdown("---")
+
+        # 3. PARAMÈTRES SÉQUENCE
+        st.markdown("### ⏱️ 3. Paramètres Séquence")
+        col_seq1, col_seq2 = st.columns(2)
+        with col_seq1:
+            st.markdown("""
+            * **$TR$ (ms)** : Temps de Répétition.
+            * **$TE$ (ms)** : Temps d'Écho.
+            * **$TI$ (ms)** : Temps d'Inversion.
+            """)
+        with col_seq2:
+            st.markdown("""
+            * **$alpha$ (Flip Angle)** : Angle de bascule RF.
+            * **$ETL$** : Echo Train Length (Facteur Turbo).
+            * **$BW$ (Hz/Px)** : Bande Passante.
+            """)
+
+        st.markdown("---")
+
+        # 4. SÉCURITÉ
+        st.markdown("### 🔥 4. Sécurité")
+        col_sar1, col_sar2 = st.columns(2)
+        with col_sar1:
+            st.markdown("""
+            * **$B_1^{+RMS}$ ($\mu T$)** : Moyenne champ RF (Risque Implants).
+            * **$B_{1,peak}$** : Amplitude max instantanée.
+            """)
+        with col_sar2:
+            st.markdown("""
+            * **$SAR$ (W/kg)** : Énergie absorbée par le patient (Chauffe).
+            * **$DC$ (%)** : Duty Cycle (Rapport Cyclique).
+            """)
+
+# [TAB 1 : FANTOME]
 with t1:
     c1, c2 = st.columns([1, 1])
     with c1:
+        # Métriques (Durée et SNR)
         k1, k2 = st.columns(2); k1.metric("⏱️ Durée", str_duree); k2.metric("📉 SNR Relatif", str_snr); st.divider()
+        
         st.subheader("1. Formules & Glossaire")
+        
+        # Affichage conditionnel des formules
         if is_dwi: 
             st.markdown("**Formule Diffusion :**")
             st.latex(r"S = S_0 \cdot e^{-b \cdot ADC}")
@@ -356,15 +466,27 @@ with t1:
         st.markdown("**Rapport Signal/Bruit (SNR) :**")
         st.latex(r"SNR \propto V_{vox} \times \sqrt{\frac{N_{Ph} \times NEX}{BW}} \times \frac{1}{g \sqrt{R}}")
         
+        # GLOSSAIRE COMPLÉTÉ (C'est ici que j'ai ajouté les termes)
         with st.expander("📖 Glossaire Complet", expanded=False):
             st.markdown("""
-            | Terme | Signification | Contexte |
+            | Symbole | Terme Complet | Signification / Impact |
             | :--- | :--- | :--- |
-            | **TR** | Temps de Répétition | Temps entre deux excitations. |
+            | **TA** | Temps d'Acquisition | Durée totale de la séquence. |
+            | **TR** | Temps de Répétition | Temps entre deux excitations RF. |
             | **TE** | Temps d'Écho | Temps jusqu'à la lecture du signal. |
-            | **TF / Turbo** | Facteur Turbo | Nombre d'échos par TR. |
-            | **BW** | Bande Passante | Vitesse de lecture. |
+            | **N_Ph** | Lignes de Phase | Nombre de lignes à acquérir dans l'espace K (Résolution). |
+            | **NEX** | Nombre d'Excitations | Moyennages. Augmente SNR ($\sqrt{N}$) et TA ($N$). |
+            | **TF** | Facteur Turbo | Nombre d'échos par TR (Accélère le temps). |
+            | **R** | Facteur d'Accélération | Accélération parallèle (iPAT). Divise le temps par $R$. |
+            | **V_vox**| Volume du Voxel | Taille du pixel $\times$ Épaisseur. Impact massif sur le SNR. |
+            | **BW** | Bande Passante | Vitesse de lecture. Haut BW = Moins de distorsion mais moins de SNR. |
+            | **g** | Facteur g | Bruit géométrique lié à l'imagerie parallèle. |
+            | **Concats**| Concaténations | Divisions des coupes en paquets (pour gérer le TR/SAR). |
+            | **b** | Valeur b | Sensibilisation à la diffusion ($s/mm^2$). |
+            | **ADC** | Coeff. Diffusion | Mobilité des molécules d'eau (Apparent Diffusion Coefficient). |
             """)
+
+        # Alertes Pathologies
         if show_stroke: st.error("⚠️ **PATHOLOGIE : AVC Ischémique**")
         if show_atrophy: st.warning("🧠 **PATHOLOGIE : Atrophie (Alzheimer)**")
 
@@ -378,86 +500,87 @@ with t1:
         ax_anot.text(S/2, S*0.93, "FAT", color='orange', ha='center', va='center', fontsize=10, fontweight='bold')
         st.pyplot(fig_anot)
         plt.close(fig_anot)
-
-# [TAB 2 : ESPACE K]
+# [TAB 2 : FUSION ESPACE K & CODAGE]
 with t2:
-    st.markdown("### 🌀 Espace K et Remplissage")
-    col_k1, col_k2 = st.columns([1, 1])
+    st.header("🌀 Espace K : La Bibliothèque de l'Image")
     
-    with col_k1:
-        # Contrôles
-        fill_mode = st.radio("Ordre de Remplissage", ["Linéaire (Haut -> Bas)", "Centrique (Centre -> Bords)"], key=f"k_mode_{current_reset_id}")
-        acq_pct = st.slider("Progression (%)", 0, 100, 10, step=1, key=f"k_pct_{current_reset_id}")
+    # 1. EN-TÊTE PÉDAGOGIQUE
+    with st.expander("🎶 Comprendre le Codage : L'Analogie de la Chorale", expanded=True):
+        c_txt1, c_txt2, c_txt3 = st.columns(3)
+        with c_txt1:
+            st.markdown("#### 1. Le Problème (La Chorale)")
+            st.info("Imaginez que tous les protons chantent une note. Sans gradient, ils chantent tous la **même note** (Fréquence de Larmor). Impossible de savoir qui est où (Gauche ou Droite ?).")
+        with c_txt2:
+            st.markdown("#### 2. La Solution (Le Chef d'Orchestre)")
+            st.warning("On applique un **Gradient** (une pente magnétique) de gauche à droite. Le champ magnétique change, donc la fréquence des spins change. **Gauche = Grave, Droite = Aigu**.")
+        with c_txt3:
+            st.markdown("#### 3. Le Résultat (La Localisation)")
+            st.success("L'antenne capte un accord complexe. L'ordinateur (Transformée de Fourier) analyse le son : *'J'entends du grave'* = Il y a du signal à Gauche. *'J'entends de l'aigu'* = Il y a du signal à Droite.")
+    
+    st.markdown("---")
+    st.markdown("**Résumé :** La Matrice est une grille de bataille navale (Ex: A1, B2). Le Codage (Fréquence et Phase) donne une **adresse unique** à chaque case.")
+    st.divider()
+    
+    # Création des deux sous-onglets
+    sub_tabs = st.tabs(["1. Cycle de Codage (Visualisation)", "2. Espace K (Remplissage)"])
+    
+    # SOUS-ONGLET 1 : CODAGE (HTML du main1.py)
+    with sub_tabs[0]:
+        components.html("""<!DOCTYPE html><html><head><style>body{margin:0;padding:5px;font-family:sans-serif;} .box{display:flex;gap:15px;} .ctrl{width:220px;padding:10px;background:#f9f9f9;border:1px solid #ccc;border-radius:8px;} canvas{border:1px solid #ccc;background:#f8f9fa;border-radius:8px;} input{width:100%;} label{font-size:11px;font-weight:bold;display:block;} button{width:100%;padding:8px;background:#4f46e5;color:white;border:none;border-radius:4px;cursor:pointer;}</style></head><body><div class='box'><div class='ctrl'><h4>Codage</h4><label>Freq</label><input type='range' id='f' min='-100' max='100' value='0'><br><label>Phase</label><input type='range' id='p' min='-100' max='100' value='0'><br><label>Coupe</label><input type='range' id='z' min='-100' max='100' value='0'><br><label>Matrice</label><input type='range' id='g' min='5' max='20' value='12'><br><button onclick='rst()'>Reset</button></div><div><canvas id='c1' width='350' height='350'></canvas><canvas id='c2' width='80' height='350'></canvas></div></div><script>const c1=document.getElementById('c1');const x=c1.getContext('2d');const c2=document.getElementById('c2');const z=c2.getContext('2d');const sf=document.getElementById('f');const sp=document.getElementById('p');const sz=document.getElementById('z');const sg=document.getElementById('g');const pd=30;function arrow(ctx,x,y,a,s){const l=s*0.35;ctx.save();ctx.translate(x,y);ctx.rotate(a);ctx.beginPath();ctx.moveTo(-l,0);ctx.lineTo(l,0);ctx.lineTo(l-6,-6);ctx.moveTo(l,0);ctx.lineTo(l-6,6);ctx.strokeStyle='white';ctx.lineWidth=1.5;ctx.stroke();ctx.restore();} function draw(){x.clearRect(0,0,350,350);z.clearRect(0,0,80,350);const fv=parseFloat(sf.value);const pv=parseFloat(sp.value);const zv=parseFloat(sz.value);const gs=parseInt(sg.value);const st=(350-2*pd)/gs;const h=(pd*0.8)*(fv/100);x.fillStyle='rgba(255,0,0,0.3)';if(fv!=0){x.beginPath();x.moveTo(pd,pd/2);x.lineTo(pd,pd/2-h);x.lineTo(350-pd,pd/2+h);x.lineTo(350-pd,pd/2);x.fill();}const w=(pd*0.8)*(pv/100);x.fillStyle='rgba(0,255,0,0.3)';if(pv!=0){x.beginPath();x.moveTo(350-pd/2,pd);x.lineTo(350-pd/2-w,pd);x.lineTo(350-pd/2+w,350-pd);x.lineTo(350-pd/2,350-pd);x.fill();} for(let i=0;i<gs;i++){for(let j=0;j<gs;j++){const cx=pd+i*st+st/2;const cy=pd+j*st+st/2;const ph=(i-gs/2)*(fv/100)*3+(j-gs/2)*(pv/100)*3;const cph=(j-gs/2)*(pv/100);x.strokeStyle='black';x.beginPath();x.arc(cx,cy,st*0.4,0,6.28);x.fillStyle='#94a3b8';x.fill();if(cph>0.01)x.fillStyle='rgba(255,255,0,0.5)';if(cph<-0.01)x.fillStyle='rgba(0,0,255,0.5)';x.fill();arrow(x,cx,cy,ph,st*0.6);}}const yz=175-(zv/100)*150;const gr=z.createLinearGradient(0,0,0,350);gr.addColorStop(0,'red');gr.addColorStop(1,'blue');z.fillStyle=gr;z.fillRect(10,10,20,330);z.strokeStyle='black';z.lineWidth=3;z.beginPath();z.moveTo(10,yz);z.lineTo(70,yz);z.stroke();z.fillStyle='black';z.fillText('Z',35,yz-5);} [sf,sp,sz,sg].forEach(s=>s.addEventListener('input',draw));function rst(){sf.value=0;sp.value=0;sz.value=0;sg.value=12;draw();}draw();</script></body></html>""", height=450)
         st.divider()
         
-        # --- VISUALISATION TURBO ---
-        if turbo > 1:
-            st.markdown(f"#### 🚅 Rangement des {turbo} Échos (Ky)")
-            st.info(f"TE Cible : **{int(te)} ms** | Facteur Turbo : **{turbo}**")
-            
-            echo_data = []
-            for i in range(turbo):
-                te_real = (i + 1) * es; delta = abs(te_real - te)
-                echo_data.append({"id": i + 1, "te": te_real, "delta": delta})
-            
-            effective_echo = min(echo_data, key=lambda x: x['delta'])
-            sorted_by_relevance = sorted(echo_data, key=lambda x: x['delta'])
-            k_space_slots = [None] * turbo; center_idx = turbo // 2
-            
-            for i, echo in enumerate(sorted_by_relevance):
-                if i % 2 == 0: offset = i // 2
-                else: offset = -((i // 2) + 1)
-                target_slot = center_idx + offset
-                if 0 <= target_slot < turbo: k_space_slots[target_slot] = echo
-                else:
-                    for k in range(turbo):
-                        if k_space_slots[k] is None: k_space_slots[k] = echo; break
+        # NOUVELLE SYNTHESE 3 PILIERS (Validée)
+        st.markdown("### 🧠 Synthèse : De la Localisation à l'Image")
+        col_s1, col_s2, col_s3 = st.columns(3)
+        with col_s1:
+            st.warning("**1. Les Gradients (Le Codage)**")
+            st.markdown("""
+            * **Z (Coupe) :** Sélectionne la tranche.
+            * **X & Y (Fréq/Phase) :** Codent la position des spins.
+            """)
+        with col_s2:
+            st.info("**2. L'Espace K (Fréquences)**")
+            st.markdown("""
+            * Les données de localisation sont stockées sous forme de **Fréquences**.
+            * L'info est **partout** : Chaque point de K contient une part de toute l'image.
+            """)
+        with col_s3:
+            st.success("**3. La Reconstruction**")
+            st.markdown("""
+            * L'Espace K n'est pas l'image.
+            * L'anatomie n'apparaît qu'après la **Transformée de Fourier Inverse**.
+            """)
 
-            fig_tse, ax = plt.subplots(figsize=(5, 4))
-            y_height = 1.0 / turbo
-            for idx, echo in enumerate(k_space_slots):
-                if echo is None: continue
-                color_val = (echo['id'] - 1) / max(1, (turbo - 1)); color = plt.cm.jet(color_val)
-                is_eff = (echo['id'] == effective_echo['id'])
-                rect = patches.Rectangle((0, 1.0 - (idx + 1) * y_height), 1, y_height, linewidth=3 if is_eff else 0.5, edgecolor='black' if is_eff else 'white', facecolor=color)
-                ax.add_patch(rect)
-                label = f"Echo {echo['id']} (TE={int(echo['te'])}ms)"; 
-                if is_eff: label += " ★"
-                ax.text(0.5, 1.0 - (idx + 0.5) * y_height, label, ha='center', va='center', color='white', fontweight='bold', path_effects=[path_effects.withStroke(linewidth=2, foreground='black')])
+    # SOUS-ONGLET 2 : ESPACE K (Python Matplotlib du main1.py)
+    with sub_tabs[1]:
+        col_k1, col_k2 = st.columns([1, 1])
+        with col_k1:
+            st.markdown("#### Remplissage K")
+            fill_mode = st.radio("Ordre de Remplissage", ["Linéaire (Haut -> Bas)", "Centrique (Centre -> Bords)"], key=f"k_mode_{current_reset_id}")
+            acq_pct = st.slider("Progression (%)", 0, 100, 10, step=1, key=f"k_pct_{current_reset_id}")
+            st.divider()
+            if turbo > 1:
+                st.info(f"TE Cible : **{int(te)} ms** | Facteur Turbo : **{turbo}**")
+                fig_tse, ax = plt.subplots(figsize=(5, 3))
+                for i in range(turbo): ax.hlines(i, 0, 1, colors=plt.cm.jet(i/turbo))
+                ax.axis('off'); ax.set_title("Rangement des Échos"); st.pyplot(fig_tse); plt.close(fig_tse)
+            else:
+                st.info(f"TE Unique : **{int(te)} ms**")
+                fig_tse, ax = plt.subplots(figsize=(5, 3))
+                ax.hlines(0, 0, 1, colors='blue'); ax.axis('off')
+                st.pyplot(fig_tse); plt.close(fig_tse)
+        with col_k2:
+            mask_k = np.zeros((S, S)); lines_to_fill = int(S * (acq_pct / 100.0))
+            if "Linéaire" in fill_mode: mask_k[0:lines_to_fill, :] = 1
+            else: center_line = S // 2; half = lines_to_fill // 2; mask_k[center_line-half:center_line+half, :] = 1
+            kspace_masked = f * mask_k; img_rec = np.abs(np.fft.ifft2(np.fft.ifftshift(kspace_masked)))
+            fig_k, ax_k = plt.subplots(figsize=(4, 4))
+            ax_k.imshow(20 * np.log(np.abs(kspace_masked) + 1), cmap='inferno'); ax_k.axis('off')
+            st.pyplot(fig_k)
+            plt.close(fig_k)
+            st.image(img_rec, clamp=True, width=300, caption="Reconstruction")
 
-            ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.axis('off')
-            ax.text(-0.05, 0.5, "CENTRE (K=0)", ha='right', va='center', fontweight='bold')
-            ax.annotate("", xy=(-0.02, 0.4), xytext=(-0.02, 0.6), arrowprops=dict(arrowstyle="-", color="black", lw=2))
-            
-            st.pyplot(fig_tse)
-            plt.close(fig_tse)
-        
-        else:
-            st.markdown(f"#### 🐢 Acquisition Standard (1 Écho/TR)")
-            st.info(f"TE Unique : **{int(te)} ms**")
-            fig_tse, ax = plt.subplots(figsize=(5, 4))
-            n_disp_lines = 24; y_h = 1.0 / n_disp_lines; color = plt.cm.jet(0)
-            for i in range(n_disp_lines):
-                rect = patches.Rectangle((0, 1.0 - (i + 1) * y_h), 1, y_h, linewidth=0.5, edgecolor='white', facecolor=color)
-                ax.add_patch(rect)
-            ax.text(0.5, 0.5, f"ECHO 1 (TE={int(te)}ms)\nAppliqué à chaque ligne", ha='center', va='center', color='white', fontweight='bold', fontsize=12, path_effects=[path_effects.withStroke(linewidth=3, foreground='black')])
-            ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.axis('off')
-            
-            st.pyplot(fig_tse)
-            plt.close(fig_tse)
-
-    with col_k2:
-        mask_k = np.zeros((S, S)); lines_to_fill = int(S * (acq_pct / 100.0))
-        if "Linéaire" in fill_mode: mask_k[0:lines_to_fill, :] = 1
-        else: center_line = S // 2; half = lines_to_fill // 2; mask_k[center_line-half:center_line+half, :] = 1
-        kspace_masked = f * mask_k; img_rec = np.abs(np.fft.ifft2(np.fft.ifftshift(kspace_masked)))
-        
-        fig_k, ax_k = plt.subplots(figsize=(4, 4))
-        ax_k.imshow(20 * np.log(np.abs(kspace_masked) + 1), cmap='inferno'); ax_k.axis('off')
-        st.pyplot(fig_k)
-        plt.close(fig_k)
-        st.image(img_rec, clamp=True, width=300, caption="Reconstruction")
-
+# [TAB 3 : SIGNAUX]
 with t3:
     st.markdown("### 📊 Comparaison des Signaux")
     c_sig_left, c_sig_center, c_sig_right = st.columns([1, 2, 1])
@@ -469,15 +592,12 @@ with t3:
         bars = ax_sig.bar(noms, vals_bar, color=cols, edgecolor='black'); ax_sig.set_ylim(0, 1.3); ax_sig.grid(True, axis='y', linestyle='--', alpha=0.5)
         st.pyplot(fig_sig); plt.close(fig_sig)
 
-with t4:
-    components.html("""<!DOCTYPE html><html><head><style>body{margin:0;padding:5px;font-family:sans-serif;} .box{display:flex;gap:15px;} .ctrl{width:220px;padding:10px;background:#f9f9f9;border:1px solid #ccc;border-radius:8px;} canvas{border:1px solid #ccc;background:#f8f9fa;border-radius:8px;} input{width:100%;} label{font-size:11px;font-weight:bold;display:block;} button{width:100%;padding:8px;background:#4f46e5;color:white;border:none;border-radius:4px;cursor:pointer;}</style></head><body><div class='box'><div class='ctrl'><h4>Codage</h4><label>Freq</label><input type='range' id='f' min='-100' max='100' value='0'><br><label>Phase</label><input type='range' id='p' min='-100' max='100' value='0'><br><label>Coupe</label><input type='range' id='z' min='-100' max='100' value='0'><br><label>Matrice</label><input type='range' id='g' min='5' max='20' value='12'><br><button onclick='rst()'>Reset</button></div><div><canvas id='c1' width='350' height='350'></canvas><canvas id='c2' width='80' height='350'></canvas></div></div><script>const c1=document.getElementById('c1');const x=c1.getContext('2d');const c2=document.getElementById('c2');const z=c2.getContext('2d');const sf=document.getElementById('f');const sp=document.getElementById('p');const sz=document.getElementById('z');const sg=document.getElementById('g');const pd=30;function arrow(ctx,x,y,a,s){const l=s*0.35;ctx.save();ctx.translate(x,y);ctx.rotate(a);ctx.beginPath();ctx.moveTo(-l,0);ctx.lineTo(l,0);ctx.lineTo(l-6,-6);ctx.moveTo(l,0);ctx.lineTo(l-6,6);ctx.strokeStyle='white';ctx.lineWidth=1.5;ctx.stroke();ctx.restore();} function draw(){x.clearRect(0,0,350,350);z.clearRect(0,0,80,350);const fv=parseFloat(sf.value);const pv=parseFloat(sp.value);const zv=parseFloat(sz.value);const gs=parseInt(sg.value);const st=(350-2*pd)/gs;const h=(pd*0.8)*(fv/100);x.fillStyle='rgba(255,0,0,0.3)';if(fv!=0){x.beginPath();x.moveTo(pd,pd/2);x.lineTo(pd,pd/2-h);x.lineTo(350-pd,pd/2+h);x.lineTo(350-pd,pd/2);x.fill();}const w=(pd*0.8)*(pv/100);x.fillStyle='rgba(0,255,0,0.3)';if(pv!=0){x.beginPath();x.moveTo(350-pd/2,pd);x.lineTo(350-pd/2-w,pd);x.lineTo(350-pd/2+w,350-pd);x.lineTo(350-pd/2,350-pd);x.fill();} for(let i=0;i<gs;i++){for(let j=0;j<gs;j++){const cx=pd+i*st+st/2;const cy=pd+j*st+st/2;const ph=(i-gs/2)*(fv/100)*3+(j-gs/2)*(pv/100)*3;const cph=(j-gs/2)*(pv/100);x.strokeStyle='black';x.beginPath();x.arc(cx,cy,st*0.4,0,6.28);x.fillStyle='#94a3b8';x.fill();if(cph>0.01)x.fillStyle='rgba(255,255,0,0.5)';if(cph<-0.01)x.fillStyle='rgba(0,0,255,0.5)';x.fill();arrow(x,cx,cy,ph,st*0.6);}}const yz=175-(zv/100)*150;const gr=z.createLinearGradient(0,0,0,350);gr.addColorStop(0,'red');gr.addColorStop(1,'blue');z.fillStyle=gr;z.fillRect(10,10,20,330);z.strokeStyle='black';z.lineWidth=3;z.beginPath();z.moveTo(10,yz);z.lineTo(70,yz);z.stroke();z.fillStyle='black';z.fillText('Z',35,yz-5);} [sf,sp,sz,sg].forEach(s=>s.addEventListener('input',draw));function rst(){sf.value=0;sp.value=0;sz.value=0;sg.value=12;draw();}draw();</script></body></html>""", height=450)
-
+# [TAB 4 : ANATOMIE]
 with t5:
     st.header("Exploration Anatomique (Physique Avancée)")
     if HAS_NILEARN and processor.ready:
         c1, c2 = st.columns([1, 3])
         dims = processor.get_dims()
-        
         with c1:
             plane = st.radio("Plan de Coupe", ["Plan Axial", "Plan Sagittal", "Plan Coronal"], key="or_298")
             if "Axial" in plane: 
@@ -486,33 +606,23 @@ with t5:
                 idx = st.slider("X", 0, dims[0]-1, 90, key=f"sl_{current_reset_id}"); ax='x'
             else: 
                 idx = st.slider("Y", 0, dims[1]-1, 100, key=f"sl_{current_reset_id}"); ax='y'
-            
             st.divider()
             window = st.slider("Fenêtre", 0.01, 2.0, 0.74, 0.005, key=f"wn_{current_reset_id}")
             level = st.slider("Niveau", 0.0, 1.0, 0.55, 0.005, key=f"lv_{current_reset_id}")
-            
             st.divider()
-            # --- LE NOUVEAU BOUTON ---
             show_interactive_legends = st.checkbox("🔍 Activer Légendes (Atlas Harvard-Oxford)", value=False, help="Identifie les structures (Gyrus, Noyaux, Tronc, Cervelet) au survol.")
-
             if is_dwi: 
                 if show_adc_map: st.info("🗺️ **Mode Carte ADC** (LCR Blanc)")
                 else: st.success(f"🧬 **Mode Diffusion** (b={b_value})")
             if show_stroke and ax == 'z': st.error("⚠️ **AVC Visible**")
-
         with c2:
-            # 1. Calcul de l'image IRM
             w_vals = {'csf':v_lcr, 'gm':v_gm, 'wm':v_wm, 'fat':v_fat}
             if show_stroke: w_vals['wm'] = w_vals['wm'] * 0.9 + v_stroke * 0.1
             seq_type_arg = 'dwi' if is_dwi else ('gre' if is_gre else None)
-            
             img_raw = processor.get_slice(ax, idx, w_vals, seq_type=seq_type_arg, te=te, tr=tr, fa=flip_angle, b_val=b_value, adc_mode=show_adc_map, with_stroke=show_stroke)
-            
             if img_raw is not None:
                 img_display = utils.apply_window_level(img_raw, window, level)
-
                 if show_interactive_legends:
-                    # MODE INTERACTIF (PLOTLY)
                     with st.spinner("Génération de la carte anatomique..."):
                         labels_map = processor.get_anatomical_labels(ax, idx)
                         fig = px.imshow(img_display, color_continuous_scale='gray', zmin=0, zmax=1, binary_string=False)
@@ -522,8 +632,7 @@ with t5:
                         st.caption("ℹ️ Passez la souris sur l'image pour voir les structures.")
                 else:
                     st.image(img_display, clamp=True, width=600)
-    else: 
-        st.warning("Module 'nilearn' manquant ou données non chargées.")
+    else: st.warning("Module 'nilearn' manquant ou données non chargées.")
 
 with t6:
     st.header("📈 Physique")
@@ -545,7 +654,6 @@ with t6:
     if is_ir: gradient = np.abs(np.linspace(1, -1, 256)).reshape(-1, 1)
     ax_bar.imshow(gradient, aspect='auto', cmap='gray', extent=[0, 1, ax_t1.get_ylim()[0], ax_t1.get_ylim()[1]])
     ax_t1.legend(); ax_bar.axis('off'); st.pyplot(fig_t1); plt.close(fig_t1)
-    
     fig_t2 = plt.figure(figsize=(10, 3)); gs2 = fig_t2.add_gridspec(1, 2, width_ratios=[30, 1], wspace=0.05)
     ax_t2 = fig_t2.add_subplot(gs2[0]); ax_bar2 = fig_t2.add_subplot(gs2[1]); x_te = np.linspace(0, 500, 300)
     ax_t2.set_title("Relaxation Transversale (T2/T2*)")
@@ -560,21 +668,16 @@ with t7:
     t_90 = 10
     if is_gre:
         st.subheader(f"Séquence : Écho de Gradient (Angle {flip_angle}°)")
-        t_max = max(tr + 40, te + 50); t = np.linspace(0, t_max, 2000)
-        rf_sigma = 0.5; grad_width = 3.0
+        t_max = max(tr + 40, te + 50); t = np.linspace(0, t_max, 2000); rf_sigma = 0.5; grad_width = 3.0
         fig, axs = plt.subplots(5, 1, sharex=True, figsize=(10, 8), gridspec_kw={'hspace': 0.3})
         rf = np.zeros_like(t); amp_rf = flip_angle / 90.0
-        rf += amp_rf * np.exp(-0.5 * ((t - t_90)**2) / (rf_sigma**2))
-        t_90_next = t_90 + tr; rf += amp_rf * np.exp(-0.5 * ((t - t_90_next)**2) / (rf_sigma**2))
-        axs[0].plot(t, rf, color='black'); axs[0].fill_between(t, 0, rf, color='green', alpha=0.4)
-        axs[0].set_ylabel("RF"); axs[0].set_yticks([0, 1], ["", f"{flip_angle}°"])
-        gsc = np.zeros_like(t); mask_sel = (t > t_90 - grad_width) & (t < t_90 + grad_width); gsc[mask_sel] = 1.0
-        mask_reph = (t > t_90 + grad_width + 1) & (t < t_90 + 2*grad_width + 1); gsc[mask_reph] = -0.8
+        rf += amp_rf * np.exp(-0.5 * ((t - t_90)**2) / (rf_sigma**2)); t_90_next = t_90 + tr; rf += amp_rf * np.exp(-0.5 * ((t - t_90_next)**2) / (rf_sigma**2))
+        axs[0].plot(t, rf, color='black'); axs[0].fill_between(t, 0, rf, color='green', alpha=0.4); axs[0].set_ylabel("RF"); axs[0].set_yticks([0, 1], ["", f"{flip_angle}°"])
+        gsc = np.zeros_like(t); mask_sel = (t > t_90 - grad_width) & (t < t_90 + grad_width); gsc[mask_sel] = 1.0; mask_reph = (t > t_90 + grad_width + 1) & (t < t_90 + 2*grad_width + 1); gsc[mask_reph] = -0.8
         axs[1].plot(t, gsc, color='green'); axs[1].fill_between(t, 0, gsc, color='green', alpha=0.6); axs[1].set_ylabel("Gss")
         gcp = np.zeros_like(t); t_code = t_90 + 15; mask_c = (t > t_code - grad_width) & (t < t_code + grad_width); gcp[mask_c] = 0.5
         axs[2].plot(t, gcp, color='orange'); axs[2].fill_between(t, 0, gcp, color='orange', alpha=0.6); axs[2].set_ylabel("Gpe")
-        gcf = np.zeros_like(t); t_read = t_90 + te; mask_read = (t > t_read - grad_width) & (t < t_read + grad_width); gcf[mask_read] = 1.0
-        t_pre = t_read - (2 * grad_width) - 2; 
+        gcf = np.zeros_like(t); t_read = t_90 + te; mask_read = (t > t_read - grad_width) & (t < t_read + grad_width); gcf[mask_read] = 1.0; t_pre = t_read - (2 * grad_width) - 2; 
         if t_pre > t_90 + grad_width: mask_pre = (t > t_pre - grad_width) & (t < t_pre + grad_width); gcf[mask_pre] = -1.0
         axs[3].plot(t, gcf, color='dodgerblue'); axs[3].fill_between(t, 0, gcf, color='dodgerblue', alpha=0.6); axs[3].set_ylabel("Gro")
         sig = np.zeros_like(t); idx_s = np.argmin(np.abs(t - (t_read - 3))); idx_e = np.argmin(np.abs(t - (t_read + 3)))
@@ -588,8 +691,7 @@ with t7:
         else: st.subheader("Séquence : Spin Écho (SE)")
         if not is_turbo: echo_times = [t_90 + te]; t_180s = [t_90 + (te/2)]; es_disp = te; t_max = max(200, t_90 + te + 50)
         else: echo_times = [t_90 + (i+1)*es for i in range(turbo)]; t_180s = []; es_disp = es; t_max = max(200, echo_times[-1] + 50)
-        t = np.linspace(0, t_max, 2000); rf_sigma = 0.5; grad_width = max(1.5, es_disp * 0.2)
-        t_180s = [];
+        t = np.linspace(0, t_max, 2000); rf_sigma = 0.5; grad_width = max(1.5, es_disp * 0.2); t_180s = []; 
         for i in range(turbo): t_p = t_90 + (i * es) + (es/2); t_180s.append(t_p)
         fig, axs = plt.subplots(5, 1, sharex=True, figsize=(10, 8), gridspec_kw={'hspace': 0.3})
         rf = np.zeros_like(t)
@@ -597,8 +699,7 @@ with t7:
         rf += add_rf_pulse(t_90, 1.0, rf_sigma) 
         for t_p in t_180s:
             if t_p < t_max: rf += add_rf_pulse(t_p, 1.6, rf_sigma)
-        axs[0].plot(t, rf, color='black', linewidth=1.5); axs[0].fill_between(t, 0, rf, color='green', alpha=0.4)
-        axs[0].set_ylabel("RF"); axs[0].set_yticks([0, 1, 1.6], ["", "90", "180"])
+        axs[0].plot(t, rf, color='black', linewidth=1.5); axs[0].fill_between(t, 0, rf, color='green', alpha=0.4); axs[0].set_ylabel("RF"); axs[0].set_yticks([0, 1, 1.6], ["", "90", "180"])
         gsc = np.zeros_like(t)
         def add_trap(center, amp, w): mask = (t > center - w) & (t < center + w); gsc[mask] = amp
         add_trap(t_90, 1.0, grad_width); t_rephase = t_90 + grad_width + 1.5; add_trap(t_rephase, -0.8, grad_width*0.6)
@@ -686,14 +787,14 @@ with t8:
             res = np.abs(np.fft.ifft2(np.fft.ifftshift(ft)))
             fig_z = plt.figure(figsize=(5,5)); ax_z = fig_z.add_subplot(111); ax_z.imshow(res, cmap='gray', vmin=0, vmax=1.3); ax_z.axis('off'); st.pyplot(fig_z)
 
+# [TAB 9 : IMAGERIE PARALLÈLE - REMPLACEMENT CHIRURGICAL]
 with t9:
-    st.header("🚀 Imagerie Parallèle (iPAT)")
-    if ipat_factor == 1:
-        st.warning("⚠️ L'accélération iPAT est désactivée. Activez-la dans la barre latérale (Section 4).")
-    else:
-        st.success(f"✅ Accélération Active : **R = {ipat_factor}**")
+    st.header("🚀 Imagerie Parallèle (PI)")
+    
+    # 0. BOUTON CACHE ET METAPHORE (Réintégré)
+    show_meta = st.checkbox("👁️ Afficher le Concept (Analogie de la Fenêtre)", value=False)
+    if show_meta:
         st.markdown("### 1. Analogie de la Fenêtre (Interactive)")
-        st.info("Déplacez-vous ou choisissez 'Vue Simultanée' pour voir la reconstruction totale.")
         pos_obs = st.select_slider("📍 Votre Position devant la fenêtre :", options=["Gauche", "Centre", "Droite", "👁️ Vue Simultanée (Tous)"], value="Centre", key=f"pos_fenetre_{current_reset_id}")
         wall_g_rect = patches.Rectangle((-10, 8), 40, 1, color='lightgray'); wall_d_rect = patches.Rectangle((70, 8), 40, 1, color='lightgray'); window_frame_x = [30, 70]
         if pos_obs == "👁️ Vue Simultanée (Tous)":
@@ -736,27 +837,118 @@ with t9:
                 elif pos_obs == "Gauche": ax_v.add_patch(patches.Rectangle((50, 0), 50, 100, color='gray')); ax_v.text(75, 50, "MUR D", color='white', ha='center', va='center', rotation=90, fontweight='bold'); ax_v.add_patch(patches.Circle((20, 50), 15, color='purple'))
                 elif pos_obs == "Droite": ax_v.add_patch(patches.Rectangle((0, 0), 50, 100, color='gray')); ax_v.text(25, 50, "MUR G", color='white', ha='center', va='center', rotation=90, fontweight='bold'); ax_v.add_patch(patches.Circle((80, 50), 15, color='purple'))
                 ax_v.set_title("Votre Rétine", fontsize=9); st.pyplot(fig_view)
+        st.divider()
 
+    # 1. Principe & Lignes
+    st.markdown("#### 1. Principe & Sous-échantillonnage")
+    col_pi_info, col_pi_ctrl = st.columns([2, 1])
+    with col_pi_info:
+        st.info(f"**Gain de Temps :** L'acquisition est accélérée par un facteur **R = {ipat_factor}**.")
+        st.warning(r"**Coût (Pénalité SNR) :** Le signal diminue de $\sqrt{R}$.")
+        
+        # Visualisation des Lignes (NEW : Graphique R)
+        st.markdown(f"**Visualisation de l'acquisition des lignes (R={ipat_factor}) :**")
+        fig_lines, ax_lines = plt.subplots(figsize=(10, 1.5))
+        for i in range(25): 
+            if i % ipat_factor == 0:
+                ax_lines.vlines(i, 0, 1, colors='green', linewidth=3)
+            else:
+                ax_lines.vlines(i, 0, 1, colors='red', linestyles='dotted', linewidth=1.5)
+        ax_lines.set_xlim(-1, 26); ax_lines.set_ylim(0, 1); ax_lines.axis('off')
+        ax_lines.text(26, 0.5, "Vert = Acquise\nRouge = Sautée", va='center', fontsize=9)
+        st.pyplot(fig_lines); plt.close(fig_lines)
+
+    with col_pi_ctrl:
+        if ipat_factor == 1: st.error("⚠️ Accélération désactivée (R=1).")
+        else: st.success(f"✅ Accélération Active (R={ipat_factor})")
+
+    st.divider()
+
+    # 2. Antennes (Profils Couleur)
+    st.markdown("#### 2. Les \"Yeux\" de la Machine (Profils de Sensibilité)")
+    col_c1, col_c2, col_c3, col_c4 = st.columns(4)
+    h, w = final.shape; sigma_coil = h / 2.5
+    centers = [(0.25, 0.25), (0.25, 0.75), (0.75, 0.25), (0.75, 0.75)]
+    titles = ["Antenne 1 (HG)", "Antenne 2 (HD)", "Antenne 3 (BG)", "Antenne 4 (BD)"]
+    cols = [col_c1, col_c2, col_c3, col_c4]
+    
+    # Stockage des images partielles pour reconstruction RSS
+    part_imgs = []
+    
+    for i, (cy, cx) in enumerate(centers):
+        sens = generate_sensitivity_map((h,w), h*cy, w*cx, sigma_coil)
+        part_img = final * sens
+        part_imgs.append(part_img)
+        cols[i].image(part_img, caption=titles[i], clamp=True, use_container_width=True)
+        # Profil Couleur (NEW)
+        fig_s, ax_s = plt.subplots(figsize=(2, 2))
+        ax_s.imshow(sens, cmap='jet', vmin=0, vmax=1); ax_s.axis('off')
+        cols[i].pyplot(fig_s); plt.close(fig_s)
+
+    # 3. La Reconstruction
+    st.divider()
+    st.markdown(f"#### 3. Résultat : Rempliement vs Reconstruction (R={ipat_factor})")
+    c_res1, c_res2 = st.columns(2)
+    
+    # Calcul image RSS (Racine somme carrés) pour "Image Combinée"
+    rss_img = np.sqrt(sum(img**2 for img in part_imgs))
+    
+    if ipat_factor > 1:
+        shift_amount = int(h / ipat_factor)
+        img_aliased = (final + np.roll(final, shift_amount, axis=0)) / 2.0
+        # Simulation Reconstruction (Ajout bruit)
+        noise_factor = np.sqrt(ipat_factor) * 1.5
+        added_noise = np.random.normal(0, (5.0/(snr_val+20.0)) * noise_factor, (h, w))
+        img_reconstructed = np.clip(rss_img + added_noise, 0, 1.3)
+        
+        c_res1.image(img_aliased, caption="Image Brute (Repliée/Aliasing)", clamp=True, use_container_width=True)
+        c_res2.image(img_reconstructed, caption="Image Reconstruite (Dépliée via SENSE/GRAPPA)", clamp=True, use_container_width=True)
+        # TEXTE PERTINENT AJOUTÉ
+        c_res2.caption(f"⚠️ Notez l'augmentation du bruit (Grain) due au facteur R={ipat_factor} (SNR divisé par √{ipat_factor}).")
+    else:
+        c_res1.image(final, caption="Image de Référence (R=1)", clamp=True, use_container_width=True)
+        c_res2.image(rss_img, caption="Combinaison des 4 signaux (Somme Quadratique)", clamp=True, use_container_width=True)
+
+# [TAB 10 : DIFFUSION - VERSION FINALE VALIDÉE]
 with t10:
     st.header("🧬 Théorie de la Diffusion (DWI)")
     st.markdown("""L'imagerie de diffusion est unique car elle sonde le **mouvement microscopique** des molécules d'eau.""")
     st.divider()
+    
+    # --- 1. CODE RESTAURÉ (ISOTROPIE & ADC) ---
     st.subheader("1. Isotropie vs Anisotropie")
     fig_iso, ax_iso = plt.subplots(1, 2, figsize=(6, 2))
-    ax_iso[0].set_title("Isotrope (LCR)"); ax_iso[0].add_patch(patches.Circle((0.5, 0.5), 0.3, color='lightblue', alpha=0.3)); ax_iso[0].text(0.5, 0.5, "H2O", ha='center', va='center', fontweight='bold')
+    
+    # Isotropie
+    ax_iso[0].set_title("Isotrope (LCR)")
+    ax_iso[0].add_patch(patches.Circle((0.5, 0.5), 0.3, color='lightblue', alpha=0.3))
+    ax_iso[0].text(0.5, 0.5, "H2O", ha='center', va='center', fontweight='bold')
     for angle in [0, 45, 90, 135, 180, 225, 270, 315]:
-        rad = np.radians(angle); dx, dy = np.cos(rad)*0.25, np.sin(rad)*0.25; ax_iso[0].arrow(0.5, 0.5, dx, dy, head_width=0.05, color='blue')
+        rad = np.radians(angle); dx, dy = np.cos(rad)*0.25, np.sin(rad)*0.25
+        ax_iso[0].arrow(0.5, 0.5, dx, dy, head_width=0.05, color='blue')
     ax_iso[0].axis('off')
-    ax_iso[1].set_title("Anisotrope (Fibre)"); ax_iso[1].add_patch(patches.Rectangle((0.1, 0.3), 0.8, 0.05, color='orange', alpha=0.5)); ax_iso[1].add_patch(patches.Rectangle((0.1, 0.65), 0.8, 0.05, color='orange', alpha=0.5)); ax_iso[1].text(0.5, 0.8, "Fibre Nerveuse", ha='center', color='orange')
+    
+    # Anisotropie
+    ax_iso[1].set_title("Anisotrope (Fibre)")
+    ax_iso[1].add_patch(patches.Rectangle((0.1, 0.3), 0.8, 0.05, color='orange', alpha=0.5))
+    ax_iso[1].add_patch(patches.Rectangle((0.1, 0.65), 0.8, 0.05, color='orange', alpha=0.5))
+    ax_iso[1].text(0.5, 0.8, "Fibre Nerveuse", ha='center', color='orange')
     ax_iso[1].text(0.5, 0.5, "H2O", ha='center', va='center', fontweight='bold')
-    ax_iso[1].arrow(0.5, 0.5, 0.3, 0, head_width=0.05, color='blue'); ax_iso[1].arrow(0.5, 0.5, -0.3, 0, head_width=0.05, color='blue')
-    ax_iso[1].arrow(0.5, 0.5, 0, 0.1, head_width=0.03, color='red', alpha=0.5); ax_iso[1].arrow(0.5, 0.5, 0, -0.1, head_width=0.03, color='red', alpha=0.5)
+    ax_iso[1].arrow(0.5, 0.5, 0.3, 0, head_width=0.05, color='blue')
+    ax_iso[1].arrow(0.5, 0.5, -0.3, 0, head_width=0.05, color='blue')
+    ax_iso[1].arrow(0.5, 0.5, 0, 0.1, head_width=0.03, color='red', alpha=0.5)
+    ax_iso[1].arrow(0.5, 0.5, 0, -0.1, head_width=0.03, color='red', alpha=0.5)
     ax_iso[1].axis('off')
-    st.pyplot(fig_iso)
+    st.pyplot(fig_iso); plt.close(fig_iso)
+    
     st.divider()
-    st.subheader("4. Coefficient de Diffusion Apparent (ADC)")
+    
+    st.subheader("2. Coefficient de Diffusion Apparent (ADC)")
     fig_adc, ax = plt.subplots(1, 2, figsize=(8, 1.5))
-    ax[0].set_facecolor('black'); ax[0].axis('off'); ax[0].set_title("SCÉNARIO 1 : AVC (Restriction)", color='lime', weight='bold', fontsize=9)
+    
+    # Scenario 1 : AVC
+    ax[0].set_facecolor('black'); ax[0].axis('off')
+    ax[0].set_title("SCÉNARIO 1 : AVC (Restriction)", color='lime', weight='bold', fontsize=9)
     ax[0].text(0.3, 0.8, "b=1000", color='black', ha='center', fontsize=8, fontweight='bold')
     ax[0].text(0.7, 0.8, "Map ADC", color='black', ha='center', fontsize=8, fontweight='bold')
     ax[0].add_patch(patches.Circle((0.3, 0.5), 0.15, edgecolor='red', facecolor='white', linewidth=4)) 
@@ -764,7 +956,9 @@ with t10:
     ax[0].text(0.5, 0.5, "➔", color='white', fontsize=12, ha='center', va='center')
     ax[0].add_patch(patches.Circle((0.7, 0.5), 0.15, edgecolor='red', facecolor='black', linewidth=4)) 
     ax[0].text(0.7, 0.25, "ADC (Noir)", color='white', ha='center', fontweight='bold', fontsize=7)
-    ax[1].set_facecolor('black'); ax[1].axis('off'); 
+    
+    # Scenario 2 : LCR
+    ax[1].set_facecolor('black'); ax[1].axis('off')
     ax[1].set_title("SCÉNARIO 2 : LCR (Liquide)", color='red', weight='bold', fontsize=9)
     ax[1].text(0.3, 0.8, "b=1000", color='black', ha='center', fontsize=8, fontweight='bold')
     ax[1].text(0.7, 0.8, "Map ADC", color='black', ha='center', fontsize=8, fontweight='bold')
@@ -773,8 +967,80 @@ with t10:
     ax[1].text(0.5, 0.5, "➔", color='white', fontsize=12, ha='center', va='center')
     ax[1].add_patch(patches.Circle((0.7, 0.5), 0.15, edgecolor='red', facecolor='white', linewidth=4)) 
     ax[1].text(0.7, 0.25, "ADC (Blanc)", color='white', ha='center', fontweight='bold', fontsize=7)
-    st.pyplot(fig_adc)
+    st.pyplot(fig_adc); plt.close(fig_adc)
+    
+    st.divider()
 
+    # --- 2. FORMULE & GRAPHIQUE (IVIM / KURTOSIS) ---
+    st.subheader("3. Comprendre la Décroissance (Avancé)")
+    
+    # Formule unique + Légende
+    st.markdown("##### La Formule de Base")
+    st.latex(r"S = S_0 \cdot e^{-b \cdot ADC}")
+    
+    with st.expander("📖 Légende de la formule (Cliquez pour ouvrir)"):
+        st.markdown("""
+        * **S** : Signal mesuré (ce qu'on voit sur l'image).
+        * **S₀** : Signal de base sans diffusion (b=0, image T2 pure).
+        * **e** : Exponentielle (la décroissance est rapide).
+        * **b** : Facteur b (puissance du gradient de diffusion).
+        * **ADC** : Coefficient de Diffusion (la mobilité de l'eau).
+        """)
+
+    # Graphique Semi-Log (Reproduction Image)
+    col_plot, col_expl = st.columns([2, 1])
+    
+    with col_plot:
+        b = np.linspace(0, 3000, 300)
+        adc_pure = 0.8e-3
+        
+        # Courbes théoriques
+        ln_S_adc = -b * adc_pure # Droite rouge
+        ivim_effect = 0.4 * np.exp(-b * 0.02)
+        ln_S_ivim = np.log(np.exp(ln_S_adc) + ivim_effect) # Zone violette
+        kurtosis_term = (1.0/6.0) * (b**2) * (adc_pure**2) * 1.5
+        ln_S_kurt = ln_S_adc + kurtosis_term # Zone verte
+
+        fig_decay, ax_d = plt.subplots(figsize=(8, 5))
+        
+        # Zones
+        ax_d.fill_between(b, ln_S_adc, ln_S_ivim, where=(b < 800), color='#9b59b6', alpha=0.3, label='Effet IVIM')
+        ax_d.fill_between(b, ln_S_adc, ln_S_kurt, where=(b > 1000), color='#2ecc71', alpha=0.4, label='Effet Kurtosis')
+        
+        # Droite ADC
+        ax_d.plot(b, ln_S_adc, color='red', linewidth=3, label='ADC (Modèle Gaussien)')
+        
+        # Points simulés
+        b_pts = np.arange(0, 3100, 200)
+        y_pts = -b_pts * adc_pure
+        y_pts[b_pts < 500] += np.log(1 + 0.4*np.exp(-b_pts[b_pts < 500]*0.02))
+        y_pts[b_pts > 1500] += (1.0/6.0) * (b_pts[b_pts > 1500]**2) * (adc_pure**2) * 1.5
+        ax_d.scatter(b_pts, y_pts, color='black', zorder=5, label='Données')
+
+        # Annotations
+        ax_d.text(300, -0.2, "IVIM (Sang)", color='purple', fontweight='bold')
+        ax_d.text(2200, -2.5, "Kurtosis (Cellules)", color='green', fontweight='bold')
+        ax_d.text(1200, -1.2, "Pente = -ADC", color='red', rotation=-30, fontweight='bold')
+
+        ax_d.set_xlabel("Facteur b"); ax_d.set_ylabel("ln(Signal)")
+        ax_d.set_xlim(0, 3000); ax_d.set_ylim(-4, 0.2)
+        ax_d.legend(); ax_d.grid(True, linestyle='--', alpha=0.5)
+        st.pyplot(fig_decay); plt.close(fig_decay)
+
+    with col_expl:
+        st.info("### 🟣 Zone IVIM (b < 200)")
+        st.markdown("""
+        **\"La Fausse Diffusion\"**
+        Au début, le signal chute vite. Ce n'est pas de la diffusion, c'est le **sang** qui circule (Pseudo-diffusion).
+        * *Utile pour voir la perfusion sans produit de contraste.*
+        """)
+        
+        st.success("### 🟢 Zone Kurtosis (b > 1000)")
+        st.markdown("""
+        **\"L'Obstacle\"**
+        À la fin, la courbe remonte. L'eau tape dans les murs des cellules (Membranes).
+        * *Utile pour grader les tumeurs complexes.*
+        """)
 with t11:
     st.header("🎓 Cours Théorique")
     slides = [f"Slide {i+1}" for i in range(5)]
@@ -935,6 +1201,7 @@ with t13:
     with c2: st.markdown("#### 2. Le TI (Null Point)"); st.write("Annule le LCR pour un contraste parfait.")
     with c3: st.markdown("#### 3. Acquisition Ultra-Rapide"); st.write("Angles faibles (~8°) pour imager vite.")
 
+# [TAB 14 : PERFUSION ASL]
 with t14:
     st.header("🩸 Perfusion ASL (Arterial Spin Labeling)")
     c_principe, c_texte = st.columns([1, 1])
@@ -970,3 +1237,496 @@ with t14:
                     fig_perf, ax_perf = plt.subplots()
                     im = ax_perf.imshow(perf_map, cmap='jet', vmin=0, vmax=np.max(perf_map)*0.8); ax_perf.axis('off'); st.pyplot(fig_perf); st.caption("3. Carte de Perfusion")
     else: st.warning("Module Anatomique requis.")
+
+# [TAB 15 : SUPPRESSION DE GRAISSE - VERSION FINALE DÉFINITIVE]
+with t15:
+    st.header("🍔 Suppression de Graisse (Fat Sat)")
+    # Suppression définitive de l'onglet "Expert RF"
+    fs_tabs = st.tabs(["1. Saturation Fréquentielle", "2. Séquence SPAIR", "3. Séquence Dixon", "4. Excitation Eau", "5. Soustraction", "6. Séquence STIR"])
+    
+    # --- 1. FAT SAT (SATURATION FRÉQUENTIELLE) ---
+    with fs_tabs[0]:
+        st.subheader("1. Saturation Fréquentielle (Fat Sat)")
+        c_fs1, c_fs2 = st.columns([1, 2])
+        with c_fs1:
+            st.markdown("##### 🎛️ Paramètres Aimant")
+            b0_fs = st.select_slider("Champ Magnétique B0 (Tesla)", options=[0.5, 1.5, 3.0], value=1.5, key="fs_b0_v_final_d")
+            ppm_val = 3.5; larmor_h = 42.58; shift_hz = int(larmor_h * b0_fs * ppm_val)
+            st.info(f"**Écart Eau-Graisse :** {shift_hz} Hz (à {b0_fs}T)")
+            st.markdown("**Perturbation (Métal / Shimming)**")
+            drift = st.slider("Décalage Fréquentiel (Hz)", -300, 300, 0, 10, key="fs_drift_v_final_d")
+            if abs(drift) > 80: st.error("🚨 **ECHEC FATSAT**")
+            elif drift != 0: st.warning(f"⚠️ Dérive de {drift} Hz")
+
+        with c_fs2:
+            fig_fs, ax_fs = plt.subplots(figsize=(8, 4))
+            x_min, x_max = -1200, 400; freq_range = np.linspace(x_min, x_max, 1000)
+            rf_target = -shift_hz; real_fat = -shift_hz + drift; real_water = 0 + drift
+            water_curve = gaussian(freq_range, real_water, 30, 1.0); fat_curve = gaussian(freq_range, real_fat, 40, 0.8)
+            ax_fs.fill_between(freq_range, water_curve, color='#3498db', alpha=0.6, label='Eau')
+            ax_fs.fill_between(freq_range, fat_curve, color='#ff7f0e', alpha=0.6, label='Graisse')
+            rf_bw = 100
+            ax_fs.axvspan(rf_target - rf_bw/2, rf_target + rf_bw/2, color='#2ecc71', alpha=0.4, label='RF Machine')
+            ax_fs.plot([real_fat, real_fat], [0, 0.8], color='#e67e22', linestyle='--', linewidth=1.5)
+            ax_fs.plot([rf_target, rf_target], [0, 0.8], color='green', linestyle=':', linewidth=1.5)
+            if drift != 0:
+                ax_fs.annotate("", xy=(real_fat, 0.4), xytext=(rf_target, 0.4), arrowprops=dict(arrowstyle="<->", color="red", lw=2))
+                ax_fs.text((real_fat + rf_target)/2, 0.45, f"Décalage {abs(drift)} Hz", color='red', ha='center', fontweight='bold', fontsize=9)
+            dist = abs(real_fat - rf_target)
+            title = "✅ SATURATION RÉUSSIE" if dist < 40 else "❌ SATURATION RATÉE (Inhomogénéité)"
+            ax_fs.set_title(title, color='green' if dist < 40 else 'red', fontweight='bold')
+            ax_fs.set_xlim(x_min, x_max); ax_fs.set_yticks([]); ax_fs.set_xlabel("Fréquence (Hz)"); ax_fs.legend(loc='upper left'); ax_fs.grid(True, alpha=0.3)
+            st.pyplot(fig_fs); plt.close(fig_fs)
+
+    # --- 2. SPAIR ---
+    with fs_tabs[1]:
+        st.subheader("2. SPAIR (Spectral Adiabatic Inversion Recovery)")
+        col_bilan1, col_bilan2 = st.columns([1, 1])
+        with col_bilan1: st.success("✅ **Points Clés :** Adiabatique (Sweep), Homogène, SAR faible.")
+        with col_bilan2: st.info("🛡️ **Compatible Gado :** L'eau n'est PAS inversée.")
+        st.divider()
+        st.markdown("#### 📉 A. Dynamique Temporelle (TI)")
+        c_sp1, c_sp2 = st.columns([1, 2])
+        with c_sp1:
+            ti_spair = st.slider("Temps d'Inversion (TI)", 50, 400, 180, 5, key="spair_ti_v_final_d")
+            mz_fat = 1 - 2 * np.exp(-ti_spair/260.0)
+            if abs(mz_fat) < 0.1: st.success(f"✅ Graisse Annulée\n({mz_fat:.2f})")
+            else: st.warning(f"Graisse Visible\n({mz_fat:.2f})")
+        with c_sp2:
+            fig_sp, ax_sp = plt.subplots(figsize=(8, 4))
+            t = np.linspace(0, 800, 500)
+            ax_sp.plot(t, 1 - 2 * np.exp(-t/260.0), color='#e67e22', linewidth=3, label='Graisse')
+            ax_sp.plot(t, 1 - 0.1 * np.exp(-t/1000.0), color='#3498db', linewidth=2, linestyle='--', label='Eau')
+            ax_sp.axhline(0, color='black', linewidth=1); ax_sp.axvline(ti_spair, color='green', linewidth=2, label=f'TI ({ti_spair}ms)')
+            ax_sp.annotate('Départ inversé (-1)', xy=(10, -0.9), xytext=(150, -0.8), arrowprops=dict(facecolor='#e67e22', arrowstyle='->'), color='#e67e22')
+            ax_sp.set_ylim(-1.1, 1.1); ax_sp.legend(loc='lower right'); ax_sp.grid(True, alpha=0.3)
+            st.pyplot(fig_sp); plt.close(fig_sp)
+        st.divider()
+        st.markdown("#### 🎯 B. Principe Adiabatique (Le Sweep)")
+        c_rf1, c_rf2 = st.columns([1, 2])
+        f_graisse = -220; bw_rf = 80; offset_shift = bw_rf * 0.8
+        with c_rf1:
+            pos_rf = st.select_slider("Balayage (Sweep)", options=["Début (F < F0)", "Centre (F = F0)", "Fin (F > F0)"], value="Centre (F = F0)")
+            rf_center = f_graisse if "Centre" in pos_rf else (f_graisse - offset_shift if "Début" in pos_rf else f_graisse + offset_shift)
+            st.info("**Le Sweep (Balayage) :** L'impulsion balaie une plage de fréquences pour retourner l'aimantation progressivement et totalement.")
+        with c_rf2:
+            fig_s, ax_s = plt.subplots(figsize=(8, 3))
+            x_f = np.linspace(-600, 200, 1000); fat_p = gaussian(x_f, f_graisse, 30, 0.8); water_p = gaussian(x_f, 0, 30, 1.0)
+            ax_s.fill_between(x_f, fat_p, color='orange', alpha=0.6); ax_s.fill_between(x_f, water_p, color='#3498db', alpha=0.6)
+            ax_s.axvspan(rf_center - bw_rf/2, rf_center + bw_rf/2, ymin=0, ymax=1, color='#2ecc71', alpha=0.4)
+            ax_s.annotate("Sweep Adiabatique", xy=(rf_center, 1.05), xytext=(rf_center, 1.3), arrowprops=dict(facecolor='#2ecc71', arrowstyle='simple'), ha='center', color='#2ecc71')
+            ax_s.set_xlim(-500, 100); ax_s.set_ylim(0, 1.4); ax_s.set_yticks([]); ax_s.set_facecolor('#262730')
+            st.pyplot(fig_s); plt.close(fig_s)
+
+    # --- 3. DIXON ---
+    with fs_tabs[2]:
+        st.subheader("3. Séquence Dixon (Chemical Shift Imaging)")
+        st.markdown("#### 📡 A. L'Acquisition (2 Échos)")
+        c_dx1, c_dx2 = st.columns([1, 2])
+        with c_dx1:
+            te_dixon = st.select_slider("Choisir le Temps d'Echo (TE)", options=[2.2, 4.5], key="dx_te_restricted_final")
+            if te_dixon == 2.2:
+                st.error("📉 **OUT OF PHASE (Opposition)**"); st.write("Eau et Graisse s'opposent."); st.latex(r"S = E - G")
+            else:
+                st.success("📈 **IN PHASE (Somme)**"); st.write("Eau et Graisse s'additionnent."); st.latex(r"S = E + G")
+        with c_dx2:
+            fig_dx, ax_dx = plt.subplots(figsize=(8, 3)); t_ms = np.linspace(0, 10, 500)
+            ax_dx.plot(t_ms, np.ones_like(t_ms), color='#3498db', label='Eau')
+            ax_dx.plot(t_ms, np.cos(2 * np.pi * 220 * t_ms / 1000.0), color='#e67e22', label='Graisse')
+            ax_dx.plot(te_dixon, np.cos(2 * np.pi * 220 * te_dixon / 1000.0), 'ro', markersize=12, label='Acquisition')
+            ax_dx.axvline(te_dixon, color='gray', linestyle='--')
+            ax_dx.set_xlabel("TE (ms)"); ax_dx.set_yticks([-1, 0, 1]); ax_dx.set_yticklabels(["Opp", "Quad", "Phase"]); ax_dx.legend(); ax_dx.grid(True, alpha=0.3)
+            st.pyplot(fig_dx); plt.close(fig_dx)
+        st.divider()
+        st.markdown("#### 🧮 B. Le Calcul")
+        c_calc1, c_calc2 = st.columns(2)
+        with c_calc1: st.markdown("##### 💧 Image EAU"); st.latex(r"W = \frac{IP + OOP}{2}")
+        with c_calc2: st.markdown("##### 🥓 Image GRAISSE"); st.latex(r"F = \frac{IP - OOP}{2}")
+
+    # --- 4. EXCITATION EAU ---
+    with fs_tabs[3]:
+        import pandas as pd # Correction : Importation nécessaire pour le tableau
+        st.subheader("4. Excitation de l'Eau (Water Excitation / WE)")
+
+        # 1. SYNTHÈSE PÉDAGOGIQUE
+        st.markdown("#### 🌊 Principe : Sélection sans Saturation")
+        
+        c_we_txt, c_we_acro = st.columns([2, 1])
+        
+        with c_we_txt:
+            st.info("""
+            **Différence avec la Fat-Sat :**
+            * **Fat-Sat :** Excite la graisse puis la tue (Gradient de déphasage).
+            * **WE (Water Excitation) :** N'utilise **pas de gradient de déphasage**. Elle stimule sélectivement l'eau en laissant la graisse tranquille (au repos).
+            """)
+            
+            st.markdown("""
+            **La Séquence Binomiale (1-1) :**
+            Au lieu d'une impulsion unique de 90°, on utilise une **paire d'impulsions de 45°** séparées par un délai précis :
+            1.  **Pulse 45° :** Tout le monde bascule.
+            2.  **Délai :** On attend que la Graisse et l'Eau soient en **opposition de phase (180°)**.
+            3.  **Pulse 45° :** L'Eau s'additionne ($45+45=90^\circ$), la Graisse se soustrait ($45-45=0^\circ$).
+            """)
+            
+            st.success("""
+            **✅ Avantages majeurs :**
+            * **Insensible aux inhomogénéités B1 :** L'annulation dépend du *timing* (précis), pas de la perfection de l'angle de bascule.
+            * **Rapide :** Pas de temps d'attente d'inversion ni de gradient de suppression.
+            """)
+
+        with c_we_acro:
+            st.markdown("#### 🏷️ Noms Commerciaux")
+            # Création du tableau avec Pandas
+            df_names = pd.DataFrame({
+                "Constructeur": ["Siemens / Fuji", "GE", "Philips", "Canon"],
+                "Acronyme": ["WE", "SSRF", "ProSET", "WET / PASTA"]
+            })
+            st.table(df_names.set_index("Constructeur"))
+
+        st.divider()
+
+        # 2. SIMULATEUR 3D (La Danse des Vecteurs)
+        st.markdown("#### 🕹️ Visualisation Dynamique (Impulsion 1-1)")
+
+        # Slider temporel
+        step = st.select_slider(
+            "Étapes de la séquence Binomiale",
+            options=[
+                "1. Équilibre (M0)", 
+                "2. Premier Pulse (45°)", 
+                "3. Délai (Opposition 180°)", 
+                "4. Second Pulse (45°)"
+            ],
+            value="1. Équilibre (M0)"
+        )
+
+        # Logique des vecteurs
+        w_vec = np.array([0.0, 0.0, 1.0]) # Eau
+        f_vec = np.array([0.0, 0.0, 1.0]) # Graisse
+        desc = "Aimantation longitudinale (z) alignée avec B0."
+        
+        if "2." in step:
+            # Pulse 45° sur l'axe X -> Bascule dans plan YZ
+            val = np.sin(np.pi/4) # 0.707
+            w_vec = np.array([0.0, val, val])
+            f_vec = np.array([0.0, val, val])
+            desc = "Première impulsion 45° (Non sélective). Eau et Graisse basculent ensemble."
+            
+        elif "3." in step:
+            # Délai : L'eau reste fixe (référentiel tournant). 
+            # La graisse se déphase de 180° autour de Z.
+            val = np.sin(np.pi/4)
+            w_vec = np.array([0.0, val, val])
+            f_vec = np.array([0.0, -val, val]) # Opposition de phase (Y inversé)
+            desc = "Délai $\\tau$ : Les vecteurs se déphasent de 180° (La graisse s'oppose à l'eau)."
+            
+        elif "4." in step:
+            # Second Pulse 45°.
+            # L'eau (à +45°) prend +45° -> Arrive à 90° (Plan transverse pur)
+            w_vec = np.array([0.0, 1.0, 0.0]) # Couché sur Y
+            # La graisse (à -45° virtuellement) prend +45° -> Remonte à 0° (Axe Z)
+            f_vec = np.array([0.0, 0.0, 1.0]) # Retour sur Z
+            desc = "Seconde impulsion 45°. L'Eau s'additionne (90°), la Graisse revient à l'équilibre (0°)."
+
+        # --- PLOT 3D ---
+        c_visu1, c_visu2 = st.columns([1, 2])
+
+        with c_visu1:
+            st.info(f"**État :** {desc}")
+            if "4." in step:
+                st.write("💧 **Eau :** Plan Transverse (Signal Max)")
+                st.write("🥓 **Graisse :** Axe Z (Signal Nul)")
+
+        with c_visu2:
+            fig = plt.figure(figsize=(6, 5))
+            ax = fig.add_subplot(111, projection='3d')
+
+            # Dessin du plan transverse (Disque)
+            p = np.linspace(0, 2*np.pi, 50)
+            r = np.linspace(0, 1.2, 2)
+            R, P = np.meshgrid(r, p)
+            X, Y = R*np.cos(P), R*np.sin(P)
+            Z = np.zeros_like(X)
+            ax.plot_surface(X, Y, Z, color='green', alpha=0.1)
+            ax.plot_wireframe(X, Y, Z, color='green', alpha=0.2, rstride=10, cstride=10)
+
+            # Axe Z (B0)
+            ax.plot([0, 0], [0, 0], [-0.2, 1.2], 'k--', linewidth=1, label='B0')
+
+            # Vecteurs
+            # Eau en Bleu
+            ax.quiver(0, 0, 0, w_vec[0], w_vec[1], w_vec[2], color='#3498db', linewidth=4, arrow_length_ratio=0.1, label='Eau')
+            
+            # Graisse en Orange
+            # Petite astuce visuelle : si les vecteurs sont superposés (étape 1 et 2), on décale un tout petit peu la graisse
+            offset = 0.0
+            if "1." in step or "2." in step: offset = 0.05
+            ax.quiver(offset, 0, 0, f_vec[0], f_vec[1], f_vec[2], color='#e67e22', linewidth=3, arrow_length_ratio=0.1, label='Graisse')
+
+            # Configuration Vue
+            ax.set_xlim(-1, 1); ax.set_ylim(-1, 1); ax.set_zlim(0, 1.2)
+            ax.set_xlabel('X'); ax.set_ylabel('Y'); ax.set_zlabel('Z')
+            ax.set_xticks([]); ax.set_yticks([]); ax.set_zticks([])
+            ax.view_init(elev=20, azim=20) # Vue isométrique
+            ax.legend()
+            
+            st.pyplot(fig); plt.close(fig)
+
+    # --- 5. SOUSTRACTION ---
+    with fs_tabs[4]:
+        st.subheader("5. Soustraction (Post - Pré)")
+        c_sub1, c_sub2 = st.columns([1, 2])
+        with c_sub1:
+            move_x = st.slider("Mouvement Patient (px)", -10, 10, 0, 1, key="sub_move_final_d")
+            st.info("Le moindre mouvement crée des artefacts.")
+        with c_sub2:
+            size = 100; y, x = np.ogrid[:size, :size]; center = size // 2
+            mask_body = np.sqrt((x - center)**2 + (y - center)**2) < 30
+            img_pre = np.zeros((size, size)); img_pre[mask_body] = 0.5
+            mask_body_mv = np.sqrt((x - (center+move_x))**2 + (y - center)**2) < 30
+            mask_lesion = np.sqrt((x - (center+move_x) - 10)**2 + (y - center - 10)**2) < 5
+            img_post = np.zeros((size, size)); img_post[mask_body_mv] = 0.5; img_post[mask_lesion] = 1.0
+            c1, c2, c3 = st.columns(3)
+            c1.image(img_pre, caption="Pré", clamp=True); c2.image(img_post, caption="Post", clamp=True); c3.image(np.clip(img_post - img_pre, 0, 1), caption="Sub", clamp=True)
+
+    # --- 6. STIR (CORRIGÉ & MODULÉ) ---
+    with fs_tabs[5]:
+        st.subheader("6. STIR (Short Tau Inversion Recovery)")
+        
+        # 1. EXPLICATION (BANDE LARGE)
+        st.markdown("#### 📡 1. Pourquoi \"Non-Sélectif\" ? (Bande Large)")
+        col_ex1, col_ex2 = st.columns([2, 1])
+        with col_ex1:
+            st.info("""
+            **Impulsion "Hard Pulse" (Le Marteau) :**
+            Le STIR utilise une impulsion courte qui tape **tout le spectre** (Eau, Graisse, Gado...).
+            """)
+        with col_ex2:
+            fig_bw, ax_bw = plt.subplots(figsize=(4, 2.5))
+            ax_bw.fill_between(np.linspace(-500, 500, 100), 0, 1, color='purple', alpha=0.4)
+            ax_bw.text(0, 0.5, "Bande Large\n(Tout le Spectre)", ha='center', color='purple', fontweight='bold')
+            ax_bw.set_yticks([]); ax_bw.set_xlabel("Fréquence"); ax_bw.set_xlim(-500, 500)
+            st.pyplot(fig_bw); plt.close(fig_bw)
+
+        st.divider()
+
+        # 2. EXPLICATION (TRI T1) - TEXTE CORRIGÉ
+        st.markdown("#### ⏱️ 2. Comprendre le \"Tri par T1\"")
+        st.markdown("Puisque tout le monde est inversé (-180°), on les trie par leur **Vitesse de retour (T1)**.")
+        
+        with st.expander("🏃 L'Analogie de la Course", expanded=True):
+            st.markdown("""
+            * **La Graisse (Sprinter) :** Remonte très vite vers +1.
+            * **L'Eau (Marathonien) :** Remonte lentement.
+            * **L'Astuce :** On attend le moment exact où le Sprinter (Graisse) passe la ligne zéro. **CLIC !** On prend la photo.
+            """)
+
+        st.divider()
+
+        # 3. COURBES (MODULE)
+        st.markdown("#### 📉 3. Visualisation (Signal en Module)")
+        st.caption("À droite du graphe : L'échelle de gris de l'image (Module).")
+
+        c_st1, c_st2 = st.columns([1, 2])
+        with c_st1:
+            ti_stir = st.slider("Choisir le moment du 'CLIC' (TI)", 50, 800, 170, 10, key="st_ti_module_final")
+            mz_fat = 1 - 2 * np.exp(-ti_stir/260.0)
+            mz_gado = 1 - 2 * np.exp(-ti_stir/280.0)
+            
+            st.metric("Signal Graisse (Module)", f"{abs(mz_fat):.2f}")
+            
+            if abs(mz_fat) < 0.1: st.success("✅ **GRAISSE NOIRE**\n(Null Point atteint)")
+            else: st.warning("Graisse visible")
+
+            if abs(mz_gado) < 0.2: st.error("🚨 **GADO ANNULÉ**\n(T1 trop proche de la graisse)")
+
+        with c_st2:
+            fig_st, (ax_st, ax_bar) = plt.subplots(1, 2, figsize=(8, 4), gridspec_kw={'width_ratios': [30, 1]})
+            plt.subplots_adjust(wspace=0.05)
+            
+            t_rng = np.linspace(0, 5000, 500)
+            tissues = {'Graisse (260ms)': (260, '#ff7f0e'), 'Gado (280ms)': (280, 'red'), 'SB (790ms)': (790, '#bdc3c7'), 'LCR (4000ms)': (4000, 'cyan')}
+            
+            for name, (t1_val, col) in tissues.items():
+                ax_st.plot(t_rng, 1 - 2 * np.exp(-t_rng / t1_val), label=name, color=col)
+            
+            ax_st.axhline(0, color='black'); ax_st.axvline(ti_stir, color='green', linewidth=2, label=f'TI ({ti_stir}ms)')
+            ax_st.plot(260*np.log(2), 0, 'o', color='orange')
+            ax_st.set_xlim(0, 5000); ax_st.set_ylim(-1.1, 1.1)
+            ax_st.set_xlabel("Temps (ms)"); ax_st.set_ylabel("Aimantation Mz")
+            ax_st.legend(loc='lower right', fontsize=8); ax_st.grid(True, alpha=0.3)
+            
+            # Barre de Gris
+            y_grad = np.linspace(1.1, -1.1, 200).reshape(-1, 1)
+            ax_bar.imshow(np.abs(y_grad), aspect='auto', cmap='gray', vmin=0, vmax=1, extent=[0, 1, -1.1, 1.1])
+            ax_bar.set_xticks([]); ax_bar.set_yticks([]); ax_bar.set_title("|Mz|", fontsize=8)
+            ax_bar.plot(0.5, 1 - 2 * np.exp(-ti_stir/260.0), 'o', color='orange', markeredgecolor='white')
+            
+            st.pyplot(fig_st); plt.close(fig_st)
+# [TAB 16 : SÉCURITÉ RF - VERSION INTÉGRALE (TOUS TABLEAUX)]
+with t16:
+    st.header("🔥 Sécurité RF : Console de Contrôle")
+    
+    # --- 0. AVERTISSEMENT ---
+    st.warning("⚠️ **Module Autonome :** Utilisez les réglages ci-dessous. Les valeurs sont simulées pour illustrer l'impact des paramètres sur la chauffe.")
+
+    # --- 1. CONFIGURATION ---
+    GAMMA = 267.513 
+    SAR_CALIB_K = 1.5 
+    
+    # Bibliothèque des Formes
+    PULSE_LIBRARY = {
+        "Sinc (3 lobes)":       {"amp": 0.67, "power": 0.55, "desc": "Standard"},
+        "Rectangulaire (Hard)": {"amp": 1.0, "power": 1.0, "desc": "Rapide"},
+        "Gaussienne":           {"amp": 0.41, "power": 0.29, "desc": "Sélectif"}
+    }
+    
+    # Bibliothèque des Intensités (Mode RF)
+    RF_MODES = {
+        "Faible (Low SAR)": 0.8,
+        "Moyenne (Standard)": 1.0,
+        "Forte (High BW)": 1.3
+    }
+
+    # --- 2. ENTRÉES UTILISATEUR ---
+    c_pat, c_seq, c_scan = st.columns(3)
+    
+    with c_pat:
+        st.markdown("#### 👤 Patient")
+        weight = st.number_input("Poids (kg)", 40.0, 150.0, 75.0, 5.0, key="sar_w_full")
+        height = st.number_input("Taille (m)", 1.0, 2.2, 1.75, 0.05, key="sar_h_full")
+        vol = weight / 1010.0 
+        radius_m = np.sqrt(vol / (np.pi * height))
+
+    with c_seq:
+        st.markdown("#### 📡 Séquence & RF")
+        seq_type = st.selectbox("Type Séquence", ["Spin Echo (SE)", "Turbo Spin Echo (TSE)", "Gradient Echo (GRE)"], key="sar_type_full")
+        
+        # 1. FORME
+        pulse_shape = st.selectbox("Forme Onde", list(PULSE_LIBRARY.keys()), index=0, key="sar_shape_full")
+        
+        # 2. INTENSITÉ (Mode RF)
+        rf_mode_name = st.select_slider("Mode RF / Intensité", options=list(RF_MODES.keys()), value="Moyenne (Standard)", key="sar_mode_full")
+        rf_intensity = RF_MODES[rf_mode_name]
+
+        # 3. Angle & ETL
+        if "TSE" in seq_type: def_etl, def_ang = 10, 150 
+        elif "GRE" in seq_type: def_etl, def_ang = 0, 20   
+        else: def_etl, def_ang = 0, 90   
+
+        angle = st.slider("Flip Angle (°)", 5, 180, def_ang, key="sar_angle_full")
+        
+        if "TSE" in seq_type:
+            etl = st.slider("Train d'Échos (ETL)", 2, 64, def_etl, key="sar_etl_full")
+        else:
+            etl = 0
+            st.slider("Train d'Échos", 0, 1, 0, disabled=True, key="sar_etl_dis_full")
+
+    with c_scan:
+        st.markdown("#### ⚙️ Paramètres Scan")
+        tr = st.number_input("TR (ms)", 20, 10000, 600, 50, key="sar_tr_full")
+        nb_slices = st.slider("Nombre de Coupes", 1, 50, 20, key="sar_slices_full")
+        nex = st.slider("NEX (Moyennages)", 1, 8, 1, key="sar_nex_full")
+        matrix = st.select_slider("Matrice Phase", options=[128, 192, 256, 512], value=256, key="sar_mat_full")
+        
+        scan_time_sec = (tr * matrix * nex) / 1000
+        st.caption(f"⏱️ Scan : {scan_time_sec/60:.1f} min")
+        duration = 3.0 
+
+    st.divider()
+
+    # --- 3. MOTEUR DE CALCUL ---
+    shape_data = PULSE_LIBRARY[pulse_shape]
+    
+    # Pulses par TR par Coupe
+    if "GRE" in seq_type: nb_pulses_per_slice = 1
+    elif "TSE" in seq_type: nb_pulses_per_slice = 1 + etl 
+    else: nb_pulses_per_slice = 2 
+    
+    # B1 Peak (Ajusté par Intensité RF)
+    angle_rad = np.radians(angle if angle > 90 else 90) 
+    duration_s = duration / 1000.0
+    
+    b1_base = (angle_rad / (GAMMA * duration_s * shape_data["amp"]))
+    b1_peak_ut = b1_base * rf_intensity
+    
+    # Duty Cycle (Total Coupes)
+    total_rf_time_ms = nb_pulses_per_slice * duration * nb_slices
+    if total_rf_time_ms > tr:
+        st.error(f"⚠️ **TR TROP COURT** ({tr}ms) pour {nb_slices} coupes !")
+        duty_cycle = 1.0
+    else:
+        duty_cycle = total_rf_time_ms / tr
+    
+    # B1+rms & SAR
+    correction_factor = 0.5 if "TSE" in seq_type else 1.0
+    b1_rms_ut = b1_peak_ut * np.sqrt(duty_cycle * shape_data["power"]) * correction_factor
+    sar_val = SAR_CALIB_K * (radius_m**2) * (b1_rms_ut**2)
+
+    # --- 4. VISUALISATION ---
+    st.subheader("📊 Moniteurs de Sécurité")
+    
+    def draw_gauge_cursor(value, label, limit_norm, limit_first, max_scale=6.0):
+        fig, ax = plt.subplots(figsize=(6, 1.8))
+        
+        # Zones
+        ax.add_patch(plt.Rectangle((0, 0), limit_norm, 1, color='#2ecc71', alpha=0.9))
+        ax.text(limit_norm/2, 0.5, "NORMAL", ha='center', va='center', color='white', fontweight='bold', fontsize=9)
+        
+        ax.add_patch(plt.Rectangle((limit_norm, 0), limit_first-limit_norm, 1, color='#f1c40f', alpha=0.9))
+        ax.text((limit_norm+limit_first)/2, 0.5, "1st LEVEL", ha='center', va='center', color='white', fontweight='bold', fontsize=8)
+        
+        ax.add_patch(plt.Rectangle((limit_first, 0), max_scale-limit_first, 1, color='#e74c3c', alpha=0.9))
+        ax.text((limit_first+max_scale)/2, 0.5, "DANGER", ha='center', va='center', color='white', fontweight='bold', fontsize=9)
+        
+        # Curseur
+        cursor_pos = min(value, max_scale - 0.1)
+        ax.plot([cursor_pos, cursor_pos], [-0.2, 1.2], color='black', linewidth=4, solid_capstyle='round')
+        ax.text(cursor_pos, 1.35, f"{value:.2f}", ha='center', fontweight='bold', fontsize=12, color='black')
+        
+        ax.set_xlim(0, max_scale); ax.set_ylim(0, 1.6); ax.set_yticks([]); ax.set_xticks([0, limit_norm, limit_first, max_scale])
+        ax.set_title(label, loc='left', fontweight='bold')
+        ax.spines['top'].set_visible(False); ax.spines['right'].set_visible(False); ax.spines['left'].set_visible(False); ax.spines['bottom'].set_visible(True)
+        return fig
+
+    c_g1, c_g2 = st.columns(2)
+    with c_g1:
+        st.pyplot(draw_gauge_cursor(sar_val, "SAR (W/kg)", 2.0, 4.0))
+        if sar_val > 4.0: st.error("🚨 SAR CRITIQUE ! Augmentez le TR ou baissez l'intensité RF.")
+    with c_g2:
+        st.pyplot(draw_gauge_cursor(b1_rms_ut, "B1+rms (µT)", 2.8, 4.0))
+        if b1_rms_ut > 2.8: st.error("⚡ RISQUE IMPLANT !")
+
+    st.divider()
+    
+    # --- 5. EXPLICATIONS & GLOSSAIRES (3 VOLETS RESTAURÉS) ---
+    
+    # 1. GLOSSAIRE PARAMÈTRES (Restauré)
+    with st.expander("📝 Détails des Paramètres & Seuils", expanded=False):
+        st.markdown("""
+        * **ETL (Facteur Turbo)** : Multiplie le nombre d'impulsions RF. Paramètre critique pour le SAR en TSE.
+        * **Matrice** : Augmente le temps mais change peu le SAR instantané.
+        * **Nombre de Coupes** : Multiplie directement l'énergie envoyée par TR.
+        * **Seuils SAR (IEC)** : 
+            * 🟩 **< 2 W/kg** (Mode Normal).
+            * 🟨 **2-4 W/kg** (Premier Niveau - Contrôle Médical).
+            * 🟥 **> 4 W/kg** (Interdit).
+        """)
+
+    # 2. INTENSITÉ RF (Nouveau)
+    with st.expander("⚡ Comprendre l'Intensité RF", expanded=False):
+        st.markdown("""
+        * **Mode Faible (Low SAR)** : La machine optimise l'impulsion (plus longue) pour minimiser le pic d'énergie.
+        * **Mode Moyenne (Standard)** : Le compromis habituel.
+        * **Mode Forte (High BW)** : La machine utilise plus de puissance (bande passante élevée) pour réduire les durées.
+        """)
+
+    # 3. TABLEAU CLINIQUE (Restauré)
+    with st.expander("🏥 Clinique : Formes d'Impulsions & Séquences", expanded=True):
+        st.markdown("""
+        | Forme | Usage Principal | Avantage | Risque / Inconvénient |
+        | :--- | :--- | :--- | :--- |
+        | **Sinc** | **TSE, SE** (Coupes 2D) | Profil de coupe rectangulaire (Pas de croisement). | **SAR Élevé** (Impulsions longues & nombreuses). |
+        | **Rectangulaire** | **MP-RAGE** (Volume 3D) | Ultra-rapide (TR court). | Coupe "sale" (bords flous) - corrigé par encodage 3D. |
+        | **Gaussienne** | **Fat Sat** | Très sélectif en fréquence. | **Pic B1 Élevé** (Stress sur l'ampli RF). |
+        """)
