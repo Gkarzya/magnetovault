@@ -500,54 +500,107 @@ with t1:
         ax_anot.text(S/2, S*0.93, "FAT", color='orange', ha='center', va='center', fontsize=10, fontweight='bold')
         st.pyplot(fig_anot)
         plt.close(fig_anot)
-# [TAB 2 : FUSION ESPACE K & CODAGE]
-# C'est ici que la modification demandée se trouve.
+# [TAB 2 : ESPACE K - TERMINOLOGIE CORRIGÉE (DÉPHASAGE)]
 with t2:
-    st.header("🌀 Espace K : La Bibliothèque de l'Image")
+    # 1. TITRE PRINCIPAL
+    st.markdown("""
+    <div style="background-color: #1e293b; padding: 20px; border-radius: 10px; margin-bottom: 25px; text-align: center; border-bottom: 4px solid #3b82f6;">
+        <h1 style="color: white; margin: 0; font-size: 36px; font-weight: 800;">🌀 Espace K : La Bibliothèque de l'Image</h1>
+        <p style="color: #94a3b8; margin-top: 5px; font-size: 16px;">De la Fréquence au Pixel : Le voyage du signal</p>
+    </div>
+    """, unsafe_allow_html=True)
     
-    # 1. EN-TÊTE PÉDAGOGIQUE (METAPHORE DE LA CHORALE)
-    with st.expander("🎶 Comprendre le Codage : L'Analogie de la Chorale", expanded=True):
+    # 2. EN-TÊTE PÉDAGOGIQUE
+    with st.expander("🎶 Comprendre le Codage : De la Chorale à la Physique", expanded=True):
         c_txt1, c_txt2, c_txt3 = st.columns(3)
+        
         with c_txt1:
-            st.markdown("#### 1. Le Problème (La Chorale)")
-            st.info("Imaginez que tous les protons chantent une note. Sans gradient, ils chantent tous la **même note** (Fréquence de Larmor). Impossible de savoir qui est où (Gauche ou Droite ?).")
+            # LE PROBLÈME
+            st.markdown("""
+            <div style="background-color: #eff6ff; padding: 15px; border-radius: 8px; border-left: 5px solid #3b82f6; height: 100%;">
+                <h3 style="color: #1e40af; margin: 0 0 10px 0; font-size: 20px;">1. Le Problème</h3>
+                <p style="font-size: 14px; color: #334155; margin: 0;"><b>Le Chaos :</b> Imaginez une <b>foule</b> où tout le monde crie "A" en même temps. Impossible de savoir qui est où. Sans codage spatial, l'IRM ne reçoit qu'un bruit global.</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
         with c_txt2:
-            st.markdown("#### 2. La Solution (Le Chef d'Orchestre)")
-            st.warning("On applique un **Gradient** (une pente magnétique) de gauche à droite. Le champ magnétique change, donc la fréquence des spins change. **Gauche = Grave, Droite = Aigu**.")
+            # LA SOLUTION
+            st.markdown("""
+            <div style="background-color: #fff7ed; padding: 15px; border-radius: 8px; border-left: 5px solid #f97316; height: 100%;">
+                <h3 style="color: #9a3412; margin: 0 0 10px 0; font-size: 20px;">2. La Solution</h3>
+                <p style="font-size: 14px; color: #334155; margin: 0;"><b>Le Tri :</b> On applique des gradients pour "trier" les signaux :</p>
+                <ul style="font-size: 13px; color: #334155; padding-left: 20px; margin-top: 5px;">
+                    <li style="margin-bottom: 5px;"><b>Fréquence :</b> Trie de Gauche à Droite (Grave ↔ Aigu).</li>
+                    <li><b>Phase :</b> Trie de Haut en Bas (En Avance ↔ En Retard).</li>
+                </ul>
+            </div>
+            """, unsafe_allow_html=True)
+            
         with c_txt3:
-            st.markdown("#### 3. Le Résultat (La Localisation)")
-            st.success("L'antenne capte un accord complexe. L'ordinateur (Transformée de Fourier) analyse le son : *'J'entends du grave'* = Il y a du signal à Gauche. *'J'entends de l'aigu'* = Il y a du signal à Droite.")
+            # LE RÉSULTAT
+            st.markdown("""
+            <div style="background-color: #f0fdf4; padding: 15px; border-radius: 8px; border-left: 5px solid #22c55e; height: 100%;">
+                <h3 style="color: #166534; margin: 0 0 10px 0; font-size: 20px;">3. La Réalité Physique</h3>
+                <p style="font-size: 14px; color: #334155; margin: 0;">Pour créer l'image, la machine combine 3 axes :</p>
+                <ul style="font-size: 13px; color: #334155; padding-left: 20px; margin-top: 5px;">
+                    <li style="margin-bottom: 5px;"><b>Axe Z (Sélection) :</b> Isole la <b>Coupe</b> (L'épaisseur).</li>
+                    <li style="margin-bottom: 5px;"><b>Axe Y (Phase) :</b> Encode les <b>Lignes</b>.</li>
+                    <li><b>Axe X (Fréquence) :</b> Encode les <b>Colonnes</b>.</li>
+                </ul>
+            </div>
+            """, unsafe_allow_html=True)
     
-    st.markdown("---")
-    st.markdown("**Résumé :** La Matrice est une grille de bataille navale (Ex: A1, B2). Le Codage (Fréquence et Phase) donne une **adresse unique** à chaque case.")
-    st.divider()
+    st.write("") 
     
-    # Création des deux sous-onglets demandés
-    sub_tabs = st.tabs(["1. Cycle de Codage (Visualisation)", "2. Espace K (Remplissage)"])
+    # RÉSUMÉ
+    st.markdown("""
+    <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+        <span style="font-size: 24px; vertical-align: middle;">📍</span> 
+        <span style="font-size: 16px; font-weight: bold; color: #0f172a; vertical-align: middle;">
+            En résumé : L'IRM est une grille 3D. Z choisit la tranche de pain, Y choisit la rangée, X choisit la colonne.
+        </span>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Création des deux sous-onglets
+    sub_tabs = st.tabs(["👁️ Cycle de Codage (Visualisation)", "🎨 Espace K (Remplissage)"])
     
     # SOUS-ONGLET 1 : CODAGE (HTML du main1.py)
     with sub_tabs[0]:
+        st.markdown("<h3 style='color: #4f46e5; border-bottom: 2px solid #4f46e5; padding-bottom: 5px;'>🎛️ Simulateur de Codage</h3>", unsafe_allow_html=True)
         components.html("""<!DOCTYPE html><html><head><style>body{margin:0;padding:5px;font-family:sans-serif;} .box{display:flex;gap:15px;} .ctrl{width:220px;padding:10px;background:#f9f9f9;border:1px solid #ccc;border-radius:8px;} canvas{border:1px solid #ccc;background:#f8f9fa;border-radius:8px;} input{width:100%;} label{font-size:11px;font-weight:bold;display:block;} button{width:100%;padding:8px;background:#4f46e5;color:white;border:none;border-radius:4px;cursor:pointer;}</style></head><body><div class='box'><div class='ctrl'><h4>Codage</h4><label>Freq</label><input type='range' id='f' min='-100' max='100' value='0'><br><label>Phase</label><input type='range' id='p' min='-100' max='100' value='0'><br><label>Coupe</label><input type='range' id='z' min='-100' max='100' value='0'><br><label>Matrice</label><input type='range' id='g' min='5' max='20' value='12'><br><button onclick='rst()'>Reset</button></div><div><canvas id='c1' width='350' height='350'></canvas><canvas id='c2' width='80' height='350'></canvas></div></div><script>const c1=document.getElementById('c1');const x=c1.getContext('2d');const c2=document.getElementById('c2');const z=c2.getContext('2d');const sf=document.getElementById('f');const sp=document.getElementById('p');const sz=document.getElementById('z');const sg=document.getElementById('g');const pd=30;function arrow(ctx,x,y,a,s){const l=s*0.35;ctx.save();ctx.translate(x,y);ctx.rotate(a);ctx.beginPath();ctx.moveTo(-l,0);ctx.lineTo(l,0);ctx.lineTo(l-6,-6);ctx.moveTo(l,0);ctx.lineTo(l-6,6);ctx.strokeStyle='white';ctx.lineWidth=1.5;ctx.stroke();ctx.restore();} function draw(){x.clearRect(0,0,350,350);z.clearRect(0,0,80,350);const fv=parseFloat(sf.value);const pv=parseFloat(sp.value);const zv=parseFloat(sz.value);const gs=parseInt(sg.value);const st=(350-2*pd)/gs;const h=(pd*0.8)*(fv/100);x.fillStyle='rgba(255,0,0,0.3)';if(fv!=0){x.beginPath();x.moveTo(pd,pd/2);x.lineTo(pd,pd/2-h);x.lineTo(350-pd,pd/2+h);x.lineTo(350-pd,pd/2);x.fill();}const w=(pd*0.8)*(pv/100);x.fillStyle='rgba(0,255,0,0.3)';if(pv!=0){x.beginPath();x.moveTo(350-pd/2,pd);x.lineTo(350-pd/2-w,pd);x.lineTo(350-pd/2+w,350-pd);x.lineTo(350-pd/2,350-pd);x.fill();} for(let i=0;i<gs;i++){for(let j=0;j<gs;j++){const cx=pd+i*st+st/2;const cy=pd+j*st+st/2;const ph=(i-gs/2)*(fv/100)*3+(j-gs/2)*(pv/100)*3;const cph=(j-gs/2)*(pv/100);x.strokeStyle='black';x.beginPath();x.arc(cx,cy,st*0.4,0,6.28);x.fillStyle='#94a3b8';x.fill();if(cph>0.01)x.fillStyle='rgba(255,255,0,0.5)';if(cph<-0.01)x.fillStyle='rgba(0,0,255,0.5)';x.fill();arrow(x,cx,cy,ph,st*0.6);}}const yz=175-(zv/100)*150;const gr=z.createLinearGradient(0,0,0,350);gr.addColorStop(0,'red');gr.addColorStop(1,'blue');z.fillStyle=gr;z.fillRect(10,10,20,330);z.strokeStyle='black';z.lineWidth=3;z.beginPath();z.moveTo(10,yz);z.lineTo(70,yz);z.stroke();z.fillStyle='black';z.fillText('Z',35,yz-5);} [sf,sp,sz,sg].forEach(s=>s.addEventListener('input',draw));function rst(){sf.value=0;sp.value=0;sz.value=0;sg.value=12;draw();}draw();</script></body></html>""", height=450)
+        
         st.divider()
-        st.markdown("### 🧠 Synthèse : Gradient & Espace K")
+        st.markdown("<h3 style='background-color: #e0e7ff; padding: 10px; border-radius: 5px; color: #3730a3;'>🧠 Synthèse : Gradient & Espace K</h3>", unsafe_allow_html=True)
         col_c1, col_c2 = st.columns(2)
+        
+        # --- MODIFICATION TERMINOLOGIQUE ICI ---
         with col_c1:
-            st.info("**1. Gradient Faible (Lignes Centrales)**")
-            st.markdown("* Peu d'enroulement = Signal Fort.\n* Contraste de l'image.")
+            st.info("**1. Gradient Faible (Lignes Centrales)**\n* Faible Déphasage = Signal Fort.\n* Contraste de l'image.")
         with col_c2:
-            st.error("**2. Gradient Fort (Lignes Périphériques)**")
-            st.markdown("* Enroulement rapide = Détails fins.\n* Résolution spatiale.")
+            st.error("**2. Gradient Fort (Lignes Périphériques)**\n* Fort Déphasage = Détails fins.\n* Résolution spatiale.")
+        # ---------------------------------------
 
-    # SOUS-ONGLET 2 : ESPACE K (Python Matplotlib du main1.py)
+    # SOUS-ONGLET 2 : ESPACE K
     with sub_tabs[1]:
+        st.markdown("<h3 style='color: #db2777; border-bottom: 2px solid #db2777; padding-bottom: 5px;'>🖼️ Remplissage & Reconstruction</h3>", unsafe_allow_html=True)
+        
         col_k1, col_k2 = st.columns([1, 1])
         with col_k1:
             fill_mode = st.radio("Ordre de Remplissage", ["Linéaire (Haut -> Bas)", "Centrique (Centre -> Bords)"], key=f"k_mode_{current_reset_id}")
             acq_pct = st.slider("Progression (%)", 0, 100, 10, step=1, key=f"k_pct_{current_reset_id}")
             st.divider()
+            
             if turbo > 1:
-                st.markdown(f"#### 🚅 Rangement des {turbo} Échos (Ky)")
+                # TITRE TSE STYLISÉ
+                st.markdown(f"""
+                <div style="background-color: #fce7f3; padding: 10px; border-radius: 5px; border-left: 5px solid #db2777; margin-bottom: 10px;">
+                    <h4 style="margin:0; color: #831843;">🚅 Rangement des {turbo} Échos (Ky)</h4>
+                </div>
+                """, unsafe_allow_html=True)
                 st.info(f"TE Cible : **{int(te)} ms** | Facteur Turbo : **{turbo}**")
+                
+                # [CODE LOGIQUE IDENTIQUE - NON MODIFIÉ]
                 echo_data = []
                 for i in range(turbo):
                     te_real = (i + 1) * es; delta = abs(te_real - te)
