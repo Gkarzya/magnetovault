@@ -1373,7 +1373,7 @@ with t15:
             ax_fs.set_xlim(x_min, x_max); ax_fs.set_yticks([]); ax_fs.set_xlabel("Fréquence (Hz)"); ax_fs.legend(loc='upper left'); ax_fs.grid(True, alpha=0.3)
             st.pyplot(fig_fs); plt.close(fig_fs)
 
-    # --- 2. SPAIR (ANIMATION COMPLETE & TI ORIGINAL) ---
+    # --- 2. SPAIR (AVEC CONTRÔLE DE VITESSE) ---
     with fs_tabs[1]:
         import time
         st.subheader("2. SPAIR (Spectral Adiabatic Inversion Recovery)")
@@ -1402,7 +1402,7 @@ with t15:
         
         st.divider()
         
-        # --- B. PRINCIPE ADIABATIQUE (ANIMATION) ---
+        # --- B. PRINCIPE ADIABATIQUE (ANIMATION RALENTIE) ---
         st.markdown("#### 🎯 B. Principe Adiabatique (Le Sweep)")
         c_anim_ctrl, c_anim_plot = st.columns([1, 2])
         
@@ -1414,6 +1414,7 @@ with t15:
             x = np.linspace(-800, 200, 1000)
             water = gaussian(x, f_water, 30, 1.0)
             fat = gaussian(x, f_fat, 40, 0.8)
+            
             ax.fill_between(x, water, color='#3498db', alpha=0.6, label='Eau')
             ax.fill_between(x, fat, color='#ff7f0e', alpha=0.6, label='Graisse')
             
@@ -1422,7 +1423,7 @@ with t15:
             ax.annotate("", xy=(f_fat, arrow_y), xytext=(f_water, arrow_y), arrowprops=dict(arrowstyle="<->", color="black", lw=1.5))
             ax.text((f_fat + f_water)/2, arrow_y + 0.05, "δ = 3.5 ppm", ha='center', va='bottom', fontweight='bold', fontsize=10, color='black')
             
-            # Bande verte
+            # Bande verte (Sweep)
             ax.axvspan(pulse_center - bw_pulse/2, pulse_center + bw_pulse/2, color='#2ecc71', alpha=0.5, label='Impulsion Adiabatique')
             ax.text(pulse_center, 1.1, label_pulse, ha='center', color='#27ae60', fontweight='bold')
             ax.annotate("", xy=(pulse_center, 1.0), xytext=(pulse_center, 1.08), arrowprops=dict(arrowstyle="->", color="#27ae60", lw=2))
@@ -1435,7 +1436,17 @@ with t15:
 
         with c_anim_ctrl:
             st.info("**Le Balayage :** L'impulsion traverse **tout** le pic de graisse (de gauche à droite).")
+            
+            # --- MODIFICATION : CHOIX DE LA VITESSE ---
+            speed_mode = st.radio("Vitesse d'animation", ["Lente (Détails)", "Normale", "Rapide"], index=0, horizontal=True)
+            
+            # Définition du temps de pause selon le choix
+            if "Lente" in speed_mode: sleep_time = 0.15 # Très lent pour bien voir en ligne
+            elif "Normale" in speed_mode: sleep_time = 0.08
+            else: sleep_time = 0.02
+            
             start_anim = st.button("▶️ Lancer le Balayage", type="primary")
+            
             if not start_anim:
                 manual_pos = st.select_slider("Position", options=["Base Gauche", "Sommet", "Base Droite"], value="Sommet")
 
@@ -1444,11 +1455,15 @@ with t15:
             if start_anim:
                 # Traversée complète : Base Gauche -> Base Droite
                 start_freq = f_fat - 100; end_freq = f_fat + 100
-                steps = np.linspace(start_freq, end_freq, 30)
+                
+                # J'ai aussi augmenté le nombre d'étapes (40 au lieu de 30) pour plus de fluidité
+                steps = np.linspace(start_freq, end_freq, 40)
+                
                 for freq in steps:
                     fig = draw_spair_spectrum(freq, "Balayage...")
                     graph_placeholder.pyplot(fig); plt.close(fig)
-                    time.sleep(0.04)
+                    time.sleep(sleep_time) # Utilise la vitesse choisie
+                
                 fig = draw_spair_spectrum(end_freq, "Fin du Pulse")
                 graph_placeholder.pyplot(fig); plt.close(fig)
             else:
@@ -1577,170 +1592,197 @@ with t15:
             ax_bar.imshow(np.abs(y_grad), aspect='auto', cmap='gray', vmin=0, vmax=1, extent=[0, 1, -1.1, 1.1])
             ax_bar.set_xticks([]); ax_bar.set_yticks([]); ax_bar.plot(0.5, 1 - 2 * np.exp(-ti_stir/260.0), 'o', color='orange', markeredgecolor='white')
             st.pyplot(fig_st); plt.close(fig_st)
-# [TAB 16 : SÉCURITÉ RF - VERSION INTÉGRALE (TOUS TABLEAUX)]
+# [TAB 16 : SÉCURITÉ RF - CALIBRAGE OPTIMISÉ T1 (TR COURT)]
 with t16:
     st.header("🔥 Sécurité RF : Console de Contrôle")
     
     # --- 0. AVERTISSEMENT ---
-    st.warning("⚠️ **Module Autonome :** Utilisez les réglages ci-dessous. Les valeurs sont simulées pour illustrer l'impact des paramètres sur la chauffe.")
+    st.warning("⚠️ **Simulateur Clinique :** Module reproduisant les contraintes réelles (IEC 60601-2-33).")
 
-    # --- 1. CONFIGURATION ---
-    GAMMA = 267.513 
-    SAR_CALIB_K = 1.5 
+    # --- 1. CONFIGURATION & CALIBRAGE ---
+    # AJUSTEMENT : Passage de 0.03 à 0.015 pour tolérer les TR courts (T1 Standard)
+    SAR_BASE_CONSTANT = 0.015
     
-    # Bibliothèque des Formes
     PULSE_LIBRARY = {
-        "Sinc (3 lobes)":       {"amp": 0.67, "power": 0.55, "desc": "Standard"},
-        "Rectangulaire (Hard)": {"amp": 1.0, "power": 1.0, "desc": "Rapide"},
-        "Gaussienne":           {"amp": 0.41, "power": 0.29, "desc": "Sélectif"}
+        "Sinc (Standard)":      {"factor": 1.0, "desc": "Compromis habituel"},
+        "Rect (Hard Pulse)":    {"factor": 1.4, "desc": "Très énergétique (Rapide)"},
+        "Gauss (Soft)":         {"factor": 0.7, "desc": "Faible énergie (Sélectif)"}
     }
     
-    # Bibliothèque des Intensités (Mode RF)
     RF_MODES = {
-        "Faible (Low SAR)": 0.8,
-        "Moyenne (Standard)": 1.0,
-        "Forte (High BW)": 1.3
+        "Low SAR": 0.8,
+        "Normal": 1.0,
+        "High Power": 1.2
     }
 
-    # --- 2. ENTRÉES UTILISATEUR ---
+    # --- 2. ENTRÉES ---
     c_pat, c_seq, c_scan = st.columns(3)
     
     with c_pat:
         st.markdown("#### 👤 Patient")
-        weight = st.number_input("Poids (kg)", 40.0, 150.0, 75.0, 5.0, key="sar_w_full")
-        height = st.number_input("Taille (m)", 1.0, 2.2, 1.75, 0.05, key="sar_h_full")
-        vol = weight / 1010.0 
-        radius_m = np.sqrt(vol / (np.pi * height))
+        weight = st.number_input("Poids (kg)", 30.0, 150.0, 75.0, 5.0, key="sar_w_opt")
+        height = st.number_input("Taille (m)", 1.0, 2.2, 1.75, 0.05, key="sar_h_opt")
 
     with c_seq:
-        st.markdown("#### 📡 Séquence & RF")
-        seq_type = st.selectbox("Type Séquence", ["Spin Echo (SE)", "Turbo Spin Echo (TSE)", "Gradient Echo (GRE)"], key="sar_type_full")
+        st.markdown("#### 📡 Séquence")
+        seq_type = st.selectbox("Type Séquence", ["Spin Echo (SE)", "Turbo Spin Echo (TSE)", "Gradient Echo (GRE)"], key="sar_type_opt")
         
-        # 1. FORME
-        pulse_shape = st.selectbox("Forme Onde", list(PULSE_LIBRARY.keys()), index=0, key="sar_shape_full")
+        b0_val = st.radio("Champ Magnétique (B0)", [1.5, 3.0], horizontal=True, key="sar_b0_opt")
         
-        # 2. INTENSITÉ (Mode RF)
-        rf_mode_name = st.select_slider("Mode RF / Intensité", options=list(RF_MODES.keys()), value="Moyenne (Standard)", key="sar_mode_full")
-        rf_intensity = RF_MODES[rf_mode_name]
-
-        # 3. Angle & ETL
-        if "TSE" in seq_type: def_etl, def_ang = 10, 150 
+        pulse_shape = st.selectbox("Forme Onde", list(PULSE_LIBRARY.keys()), index=0, key="sar_shape_opt")
+        
+        # Presets intelligents
+        if "TSE" in seq_type: def_etl, def_ang = 3, 90 # T1 TSE typique
         elif "GRE" in seq_type: def_etl, def_ang = 0, 20   
         else: def_etl, def_ang = 0, 90   
 
-        angle = st.slider("Flip Angle (°)", 5, 180, def_ang, key="sar_angle_full")
+        angle = st.slider("Flip Angle (°)", 10, 180, def_ang, key="sar_angle_opt", help="Angle de refocalisation")
         
         if "TSE" in seq_type:
-            etl = st.slider("Train d'Échos (ETL)", 2, 64, def_etl, key="sar_etl_full")
+            etl = st.slider("ETL (Facteur Turbo)", 2, 64, def_etl, key="sar_etl_opt")
         else:
             etl = 0
-            st.slider("Train d'Échos", 0, 1, 0, disabled=True, key="sar_etl_dis_full")
+            st.slider("ETL", 0, 1, 0, disabled=True, key="sar_etl_dis_opt")
 
     with c_scan:
         st.markdown("#### ⚙️ Paramètres Scan")
-        tr = st.number_input("TR (ms)", 20, 10000, 600, 50, key="sar_tr_full")
-        nb_slices = st.slider("Nombre de Coupes", 1, 50, 20, key="sar_slices_full")
-        nex = st.slider("NEX (Moyennages)", 1, 8, 1, key="sar_nex_full")
-        matrix = st.select_slider("Matrice Phase", options=[128, 192, 256, 512], value=256, key="sar_mat_full")
+        # TR par défaut à 600 pour tester T1
+        tr = st.number_input("TR (ms)", 20, 10000, 600, 50, key="sar_tr_opt", help="Temps de Répétition")
+        nb_slices = st.slider("Nombre de Coupes", 1, 60, 20, key="sar_slices_opt")
         
+        rf_mode_name = st.select_slider("Mode RF", options=list(RF_MODES.keys()), value="Normal", key="sar_mode_opt")
+        rf_intensity = RF_MODES[rf_mode_name]
+        
+        nex = 1; matrix = 256
         scan_time_sec = (tr * matrix * nex) / 1000
-        st.caption(f"⏱️ Scan : {scan_time_sec/60:.1f} min")
-        duration = 3.0 
+        if etl > 1: scan_time_sec = scan_time_sec / etl
+        st.caption(f"⏱️ Scan : {int(scan_time_sec//60)}min {int(scan_time_sec%60)}s")
 
     st.divider()
 
-    # --- 3. MOTEUR DE CALCUL ---
-    shape_data = PULSE_LIBRARY[pulse_shape]
+    # --- 3. MOTEUR PHYSIQUE ---
     
-    # Pulses par TR par Coupe
-    if "GRE" in seq_type: nb_pulses_per_slice = 1
-    elif "TSE" in seq_type: nb_pulses_per_slice = 1 + etl 
-    else: nb_pulses_per_slice = 2 
+    # A. Facteurs Quadratiques (Lois Physiques)
+    factor_b0 = (b0_val / 1.5) ** 2 
+    factor_angle = (angle / 90.0) ** 2
     
-    # B1 Peak (Ajusté par Intensité RF)
-    angle_rad = np.radians(angle if angle > 90 else 90) 
-    duration_s = duration / 1000.0
+    # B. Charge Temporelle
+    if "GRE" in seq_type: pulses_per_slice = 1
+    elif "TSE" in seq_type: pulses_per_slice = 1 + etl 
+    else: pulses_per_slice = 2 
     
-    b1_base = (angle_rad / (GAMMA * duration_s * shape_data["amp"]))
-    b1_peak_ut = b1_base * rf_intensity
+    total_pulses_per_tr = pulses_per_slice * nb_slices
     
-    # Duty Cycle (Total Coupes)
-    total_rf_time_ms = nb_pulses_per_slice * duration * nb_slices
-    if total_rf_time_ms > tr:
-        st.error(f"⚠️ **TR TROP COURT** ({tr}ms) pour {nb_slices} coupes !")
-        duty_cycle = 1.0
-    else:
-        duty_cycle = total_rf_time_ms / tr
+    # C. Densité (Normalisation TR 500ms)
+    density_factor = total_pulses_per_tr / (tr / 500.0)
     
-    # B1+rms & SAR
-    correction_factor = 0.5 if "TSE" in seq_type else 1.0
-    b1_rms_ut = b1_peak_ut * np.sqrt(duty_cycle * shape_data["power"]) * correction_factor
-    sar_val = SAR_CALIB_K * (radius_m**2) * (b1_rms_ut**2)
+    # D. Autres Facteurs
+    factor_weight = 75.0 / weight
+    factor_shape = PULSE_LIBRARY[pulse_shape]["factor"]
+    
+    # E. Calcul Final SAR
+    sar_val = SAR_BASE_CONSTANT * factor_b0 * factor_angle * density_factor * factor_weight * rf_intensity * factor_shape
+    
+    # F. Calcul B1+rms
+    b1_peak_est = (angle / 90.0) * 4.0 * rf_intensity 
+    avg_pulse_duration = 2.5 # ms (Moyenne clinique)
+    duty_cycle_raw = (total_pulses_per_tr * avg_pulse_duration) / tr
+    duty_cycle_raw = min(duty_cycle_raw, 1.0)
+    
+    b1_rms_ut = b1_peak_est * np.sqrt(duty_cycle_raw) * factor_shape
 
     # --- 4. VISUALISATION ---
     st.subheader("📊 Moniteurs de Sécurité")
     
-    def draw_gauge_cursor(value, label, limit_norm, limit_first, max_scale=6.0):
-        fig, ax = plt.subplots(figsize=(6, 1.8))
+    c_visu_g, c_visu_d = st.columns([1, 1])
+    
+    with c_visu_g:
+        st.markdown("##### 📉 Profil RF & Charge")
         
-        # Zones
-        ax.add_patch(plt.Rectangle((0, 0), limit_norm, 1, color='#2ecc71', alpha=0.9))
-        ax.text(limit_norm/2, 0.5, "NORMAL", ha='center', va='center', color='white', fontweight='bold', fontsize=9)
+        fig_p, ax_p = plt.subplots(figsize=(5, 2.5))
+        t_axis = np.linspace(-1, 1, 200)
         
-        ax.add_patch(plt.Rectangle((limit_norm, 0), limit_first-limit_norm, 1, color='#f1c40f', alpha=0.9))
-        ax.text((limit_norm+limit_first)/2, 0.5, "1st LEVEL", ha='center', va='center', color='white', fontweight='bold', fontsize=8)
+        if "Rect" in pulse_shape: y_pulse = np.where(np.abs(t_axis)<0.5, 1, 0)
+        elif "Sinc" in pulse_shape: y_pulse = np.sinc(t_axis * 3)
+        else: y_pulse = np.exp(-t_axis**2 * 5)
+            
+        y_pulse = y_pulse * b1_peak_est
+        ax_p.plot(t_axis, y_pulse, color='#8e44ad', lw=2)
+        ax_p.fill_between(t_axis, y_pulse, color='#8e44ad', alpha=0.2)
         
-        ax.add_patch(plt.Rectangle((limit_first, 0), max_scale-limit_first, 1, color='#e74c3c', alpha=0.9))
-        ax.text((limit_first+max_scale)/2, 0.5, "DANGER", ha='center', va='center', color='white', fontweight='bold', fontsize=9)
+        ax_p.set_ylim(0, max(10, b1_peak_est * 1.3))
+        ax_p.set_yticks([]); ax_p.set_xticks([])
+        ax_p.set_ylabel("B1 (µT)")
+        ax_p.set_title(f"Pic B1: {b1_peak_est:.1f} µT (x{factor_b0:.0f} énergie à {b0_val}T)", fontsize=9, color='gray')
+        ax_p.grid(True, alpha=0.3)
+        st.pyplot(fig_p); plt.close(fig_p)
         
-        # Curseur
-        cursor_pos = min(value, max_scale - 0.1)
-        ax.plot([cursor_pos, cursor_pos], [-0.2, 1.2], color='black', linewidth=4, solid_capstyle='round')
-        ax.text(cursor_pos, 1.35, f"{value:.2f}", ha='center', fontweight='bold', fontsize=12, color='black')
-        
-        ax.set_xlim(0, max_scale); ax.set_ylim(0, 1.6); ax.set_yticks([]); ax.set_xticks([0, limit_norm, limit_first, max_scale])
-        ax.set_title(label, loc='left', fontweight='bold')
-        ax.spines['top'].set_visible(False); ax.spines['right'].set_visible(False); ax.spines['left'].set_visible(False); ax.spines['bottom'].set_visible(True)
-        return fig
+        if b0_val == 3.0:
+            st.error("⚠️ **IMPACT 3 TESLA** : Chauffe x4.")
 
-    c_g1, c_g2 = st.columns(2)
-    with c_g1:
-        st.pyplot(draw_gauge_cursor(sar_val, "SAR (W/kg)", 2.0, 4.0))
-        if sar_val > 4.0: st.error("🚨 SAR CRITIQUE ! Augmentez le TR ou baissez l'intensité RF.")
-    with c_g2:
+    with c_visu_d:
+        def draw_gauge_cursor(value, label, limit_norm, limit_first, max_scale=6.0):
+            fig, ax = plt.subplots(figsize=(6, 2))
+            ax.add_patch(plt.Rectangle((0, 0), limit_norm, 1, color='#2ecc71', alpha=0.9))
+            ax.text(limit_norm/2, 0.5, "NORMAL", ha='center', va='center', color='white', fontweight='bold', fontsize=8)
+            ax.add_patch(plt.Rectangle((limit_norm, 0), limit_first-limit_norm, 1, color='#f1c40f', alpha=0.9))
+            ax.text((limit_norm+limit_first)/2, 0.5, "LEVEL 1", ha='center', va='center', color='white', fontweight='bold', fontsize=8)
+            ax.add_patch(plt.Rectangle((limit_first, 0), max_scale-limit_first, 1, color='#e74c3c', alpha=0.9))
+            ax.text((limit_first+max_scale)/2, 0.5, "STOP", ha='center', va='center', color='white', fontweight='bold', fontsize=8)
+            
+            cursor_pos = min(value, max_scale - 0.1)
+            ax.plot([cursor_pos, cursor_pos], [-0.2, 1.2], color='black', linewidth=4)
+            ax.text(cursor_pos, 1.35, f"{value:.2f}", ha='center', fontweight='bold', fontsize=12, color='black')
+            ax.set_xlim(0, max_scale); ax.set_ylim(0, 1.6); ax.axis('off')
+            ax.set_title(label, loc='left', fontweight='bold')
+            return fig
+
+        st.pyplot(draw_gauge_cursor(sar_val, "SAR Global (W/kg)", 2.0, 4.0))
+        
+        if sar_val > 4.0:
+            st.error("🚨 **BLOCAGE** : SAR Critique.")
+        elif sar_val > 2.0:
+            st.warning("⚠️ **MODE CONTRÔLÉ**.")
+        
         st.pyplot(draw_gauge_cursor(b1_rms_ut, "B1+rms (µT)", 2.8, 4.0))
-        if b1_rms_ut > 2.8: st.error("⚡ RISQUE IMPLANT !")
 
     st.divider()
     
-    # --- 5. EXPLICATIONS & GLOSSAIRES (3 VOLETS RESTAURÉS) ---
+    # --- 5. FORMULES & GLOSSAIRES ---
+    c_f1, c_f2 = st.columns(2)
+    with c_f1:
+        st.markdown("#### 🌡️ Calcul du SAR")
+        st.latex(r"SAR \propto B_0^2 \times \alpha^2 \times DC \times \frac{1}{Poids}")
+    with c_f2:
+        st.markdown("#### ⚡ Calcul du B1+rms")
+        st.latex(r"B_{1}^{+rms} \propto B_{1,peak} \times \sqrt{DC}")
+
+    c_exp1, c_exp2 = st.columns(2)
+    with c_exp1:
+        with st.expander("📖 Facteurs d'influence SAR"):
+            st.markdown(f"""
+            * **Champ $B_0$ ({b0_val}T)** : Facteur **x{factor_b0:.1f}**.
+            * **Angle $\\alpha$ ({angle}°)** : Facteur **x{factor_angle:.1f}**.
+            * **DC (Duty Cycle)** : Lié au TR court ({tr}ms) et aux Coupes ({nb_slices}).
+            """)
+    with c_exp2:
+        with st.expander("📖 Facteurs d'influence B1+rms"):
+            st.markdown("""
+            * **B1 Peak** : Intensité du pulse.
+            * **Implants** : Attention aux fils/électrodes.
+            """)
     
-    # 1. GLOSSAIRE PARAMÈTRES (Restauré)
-    with st.expander("📝 Détails des Paramètres & Seuils", expanded=False):
-        st.markdown("""
-        * **ETL (Facteur Turbo)** : Multiplie le nombre d'impulsions RF. Paramètre critique pour le SAR en TSE.
-        * **Matrice** : Augmente le temps mais change peu le SAR instantané.
-        * **Nombre de Coupes** : Multiplie directement l'énergie envoyée par TR.
-        * **Seuils SAR (IEC)** : 
-            * 🟩 **< 2 W/kg** (Mode Normal).
-            * 🟨 **2-4 W/kg** (Premier Niveau - Contrôle Médical).
-            * 🟥 **> 4 W/kg** (Interdit).
-        """)
+    st.divider()
+    
+    # --- 6. TABLEAUX CLINIQUES ---
+    with st.expander("📝 Seuils & Paramètres", expanded=False):
+        st.markdown("* **SAR Normal** : < 2 W/kg\n* **SAR Level 1** : 2-4 W/kg\n* **SAR Interdit** : > 4 W/kg")
 
-    # 2. INTENSITÉ RF (Nouveau)
-    with st.expander("⚡ Comprendre l'Intensité RF", expanded=False):
+    with st.expander("🏥 Clinique : Formes d'Impulsions", expanded=True):
         st.markdown("""
-        * **Mode Faible (Low SAR)** : La machine optimise l'impulsion (plus longue) pour minimiser le pic d'énergie.
-        * **Mode Moyenne (Standard)** : Le compromis habituel.
-        * **Mode Forte (High BW)** : La machine utilise plus de puissance (bande passante élevée) pour réduire les durées.
-        """)
-
-    # 3. TABLEAU CLINIQUE (Restauré)
-    with st.expander("🏥 Clinique : Formes d'Impulsions & Séquences", expanded=True):
-        st.markdown("""
-        | Forme | Usage Principal | Avantage | Risque / Inconvénient |
+        | Forme | Usage | SAR | B1 Peak |
         | :--- | :--- | :--- | :--- |
-        | **Sinc** | **TSE, SE** (Coupes 2D) | Profil de coupe rectangulaire (Pas de croisement). | **SAR Élevé** (Impulsions longues & nombreuses). |
-        | **Rectangulaire** | **MP-RAGE** (Volume 3D) | Ultra-rapide (TR court). | Coupe "sale" (bords flous) - corrigé par encodage 3D. |
-        | **Gaussienne** | **Fat Sat** | Très sélectif en fréquence. | **Pic B1 Élevé** (Stress sur l'ampli RF). |
+        | **Sinc** | Standard | Moyen | Moyen |
+        | **Rect** | Rapide | Élevé | Faible (relatif) |
+        | **Gauss** | Sélectif | Faible | Élevé |
         """)
