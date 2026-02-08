@@ -275,7 +275,27 @@ def translate_seq(name):
     
     # Si rien n'est trouvé, on renvoie le nom original
     return name
-
+# --- NOUVEAU : MOTEUR DE CALCUL CENTRALISÉ ---
+@st.cache_data
+def get_computed_physics(tr, te, ti, flip_angle, is_gre, is_dwi, b_value, seq_choix):
+    # On récupère les paramètres par défaut pour le SNR
+    defaults = cst.STD_PARAMS.get(seq_choix, cst.STD_PARAMS["Pondération T1"])
+    
+    # Calcul des signaux (Extraits de ton code original)
+    v_lcr = phy.calculate_signal(tr, te, ti, cst.T_LCR['T1'], cst.T_LCR['T2'], cst.T_LCR['T2s'], cst.T_LCR['ADC'], cst.T_LCR['PD'], flip_angle, is_gre, is_dwi, b_value if is_dwi else 0)
+    v_wm  = phy.calculate_signal(tr, te, ti, cst.T_WM['T1'], cst.T_WM['T2'], cst.T_WM['T2s'], cst.T_WM['ADC'], cst.T_WM['PD'], flip_angle, is_gre, is_dwi, b_value if is_dwi else 0)
+    v_gm  = phy.calculate_signal(tr, te, ti, cst.T_GM['T1'], cst.T_GM['T2'], cst.T_GM['T2s'], cst.T_GM['ADC'], cst.T_GM['PD'], flip_angle, is_gre, is_dwi, b_value if is_dwi else 0)
+    v_stroke = phy.calculate_signal(tr, te, ti, cst.T_STROKE['T1'], cst.T_STROKE['T2'], cst.T_STROKE['T2s'], cst.T_STROKE['ADC'], cst.T_STROKE['PD'], flip_angle, is_gre, is_dwi, b_value if is_dwi else 0)
+    
+    # SNR Relatif
+    ref_wm_signal = phy.calculate_signal(float(defaults['tr']), float(defaults['te']), 0, cst.T_WM['T1'], cst.T_WM['T2'], cst.T_WM['T2s'], cst.T_WM['ADC'], cst.T_WM['PD'], 90, False, False, 0)
+    # Protection simple contre division par zéro
+    ref_wm_signal = ref_wm_signal if ref_wm_signal != 0 else 0.001
+    
+    return {
+        "v_lcr": v_lcr, "v_wm": v_wm, "v_gm": v_gm, "v_stroke": v_stroke,
+        "ref_wm_signal": ref_wm_signal
+    }
 # --- STATE MANAGEMENT ---
 if 'init' not in st.session_state:
     st.session_state.seq = 'Pondération T1'
@@ -506,7 +526,17 @@ else:
             msg_opt = T("Optimisation", "Optimize")
             st.sidebar.markdown(f"""<div class="opt-box"><b>{msg_opt} {n_concats} Concats</b><br>TR Min : <b>{int(tr_opti)} ms</b></div>""", unsafe_allow_html=True)
             st.sidebar.button(f"📉 {T('Appliquer', 'Apply')} TR {int(tr_opti)} ms", on_click=set_optimized_tr, args=(tr_opti,))
-
+# --- RÉTABLISSEMENT DU RÉGLAGE ECHO (TE) ---
+    st.sidebar.subheader(T("Réglage Echo", "Echo Settings"))
+    
+    te = st.sidebar.slider(
+        "TE (ms)", 
+        min_value=1.0, 
+        max_value=300.0, 
+        value=te, 
+        step=0.5, 
+        key=f"te_{current_reset_id}"
+    )
     if is_ir: ti = st.sidebar.slider("TI", 0.0, 3500.0, float(defaults['ti']), step=10.0, key=f"ti_{current_reset_id}")
     else: ti = 0.0
     
@@ -610,15 +640,18 @@ mins = int(final_seconds // 60)
 secs = int(final_seconds % 60)
 str_duree = f"{mins} min {secs} s"
 
-# --- 2. CALCUL DES SIGNAUX ---
-v_lcr = phy.calculate_signal(tr_effective, te, ti, cst.T_LCR['T1'], cst.T_LCR['T2'], cst.T_LCR['T2s'], cst.T_LCR['ADC'], cst.T_LCR['PD'], flip_angle, is_gre, is_dwi, b_value if is_dwi else 0)
-# ... le reste du code des signaux reste identique ...
-v_wm  = phy.calculate_signal(tr_effective, te, ti, cst.T_WM['T1'], cst.T_WM['T2'], cst.T_WM['T2s'], cst.T_WM['ADC'], cst.T_WM['PD'], flip_angle, is_gre, is_dwi, b_value if is_dwi else 0)
+# --- APPEL DU MOTEUR ---
+res = get_computed_physics(tr, te, ti, flip_angle, is_gre, is_dwi, b_value if is_dwi else 0, seq_choix)
 
-v_gm  = phy.calculate_signal(tr_effective, te, ti, cst.T_GM['T1'], cst.T_GM['T2'], cst.T_GM['T2s'], cst.T_GM['ADC'], cst.T_GM['PD'], flip_angle, is_gre, is_dwi, b_value if is_dwi else 0)
+v_lcr = res["v_lcr"]
+v_wm = res["v_wm"]
+v_gm = res["v_gm"]
+v_stroke = res["v_stroke"]
 
-v_stroke = phy.calculate_signal(tr_effective, te, ti, cst.T_STROKE['T1'], cst.T_STROKE['T2'], cst.T_STROKE['T2s'], cst.T_STROKE['ADC'], cst.T_STROKE['PD'], flip_angle, is_gre, is_dwi, b_value if is_dwi else 0)
-
+# Calcul final du SNR (utilisant le résultat du moteur)
+snr_val = phy.calculate_snr_relative(mat, nex, turbo, ipat_factor, bw, fov, ep, v_wm, res["ref_wm_signal"])
+snr_val = snr_val * 1.25 
+str_snr = f"{snr_val:.1f} %"
 # Modification pour DWI High-B
 if is_dwi and b_value >= 1000 and show_stroke: v_stroke = 2.0 
 v_fat = phy.calculate_signal(tr_effective, te, ti, cst.T_FAT['T1'], cst.T_FAT['T2'], cst.T_FAT['T2s'], cst.T_FAT['ADC'], cst.T_FAT['PD'], flip_angle, is_gre, is_dwi, 0) if not is_dwi else 0.0
@@ -849,7 +882,447 @@ final = np.clip(final, 0, 1.3)
 # 6. Espace K (FFT)
 f = np.fft.fftshift(np.fft.fft2(final_complex))
 kspace = 20 * np.log(np.abs(f) + 1)
+@st.fragment
+def render_safety_tab():
+    st.header(T("🔥 Sécurité RF : Console de Contrôle", "🔥 RF Safety: Control Console"))
+    
+    # --- 0. AVERTISSEMENT ---
+    st.warning(T(
+        "⚠️ **Simulateur Clinique :** Module reproduisant les contraintes réelles (IEC 60601-2-33). **Ce module est déconnecté du reste du simulateur et ne doit PAS être utilisé à des fins cliniques.**",
+        "⚠️ **Clinical Simulator:** Module reproducing real constraints (IEC 60601-2-33). **This module is disconnected from the rest of the simulator and must NOT be used for clinical purposes.**"
+    ))
 
+    # --- 1. CONFIGURATION ---
+    SAR_CALIB_FACTOR = 0.005
+    
+    # Définition dynamique pour la traduction des descriptions
+    # Les clés restent techniques pour la logique, mais on peut les afficher traduites si besoin
+    # Ici, je traduis les clés directement pour le menu déroulant
+    
+    k_sinc = T("Sinc (Standard 2D)", "Sinc (Standard 2D)")
+    k_rect = T("Rect (Hard Pulse 3D)", "Rect (Hard Pulse 3D)")
+    k_gauss = T("Gauss (Sélectif)", "Gauss (Selective)")
+
+    PULSE_LIBRARY = {
+        k_sinc:  {"factor": 1.0, "desc": T("Pour coupes 2D nettes (SE, TSE, GRE)", "For sharp 2D slices (SE, TSE, GRE)")},
+        k_rect:  {"factor": 1.4, "desc": T("Pour volumes 3D rapides (MP-RAGE)", "For fast 3D volumes (MP-RAGE)")},
+        k_gauss: {"factor": 0.7, "desc": T("Pour Saturation ou Inversion", "For Saturation or Inversion")}
+    }
+    
+    RF_MODES = {
+        "Low SAR": 0.8,
+        "Normal": 1.0,
+        "High Power": 1.2
+    }
+
+    # --- 2. ENTRÉES UTILISATEUR ---
+    c_pat, c_seq, c_scan = st.columns(3)
+    
+    with c_pat:
+        st.markdown(f"#### {T('👤 Patient', '👤 Patient')}")
+        weight = st.number_input(T("Poids (kg)", "Weight (kg)"), 30.0, 150.0, 75.0, 5.0, key="sar_w_tabfinal")
+        height = st.number_input(T("Taille (m)", "Height (m)"), 1.0, 2.2, 1.75, 0.05, key="sar_h_tabfinal")
+
+    with c_seq:
+        st.markdown(f"#### {T('📡 Séquence', '📡 Sequence')}")
+        
+        # Options traduites mais contenant les acronymes pour la logique (SE, TSE, GRE)
+        opt_se = T("Spin Echo (SE)", "Spin Echo (SE)")
+        opt_tse = T("Turbo Spin Echo (TSE)", "Turbo Spin Echo (TSE)")
+        opt_gre = T("Echo de Gradient (GRE)", "Gradient Echo (GRE)")
+        
+        seq_type = st.selectbox(T("Type Séquence", "Sequence Type"), [opt_se, opt_tse, opt_gre], key="sar_type_tabfinal")
+        
+        b0_val = st.radio(T("Champ Magnétique (B0)", "Magnetic Field (B0)"), [1.5, 3.0], horizontal=True, key="sar_b0_tabfinal")
+        
+        pulse_shape = st.selectbox(T("Forme Onde", "Waveform"), list(PULSE_LIBRARY.keys()), index=0, key="sar_shape_tabfinal")
+        
+        # Presets et Labels Dynamiques
+        if "GRE" in seq_type:
+            def_etl, def_ang = 0, 20
+            label_angle = T("Angle d'Excitation (α)", "Excitation Angle (α)")
+            help_angle = T("Angle de bascule (5° à 90° en clinique)", "Flip angle (5° to 90° clinical)")
+        elif "TSE" in seq_type: 
+            def_etl, def_ang = 3, 180
+            label_angle = T("Angle de Refoc (°)", "Refoc Angle (°)")
+            help_angle = T("Angle des impulsions de refocalisation", "Refocusing pulse angle")
+        else: 
+            def_etl, def_ang = 0, 180
+            label_angle = T("Angle de Refoc (°)", "Refoc Angle (°)")
+            help_angle = T("Angle de l'impulsion de refocalisation", "Refocusing pulse angle")
+
+        angle = st.slider(label_angle, 5, 180, def_ang, key="sar_angle_tabfinal", help=help_angle)
+        
+        if "TSE" in seq_type:
+            etl = st.slider(T("ETL (Facteur Turbo)", "ETL (Turbo Factor)"), 2, 64, def_etl, key="sar_etl_tabfinal")
+        else:
+            etl = 0
+            st.slider("ETL", 0, 1, 0, disabled=True, key="sar_etl_dis_tabfinal")
+
+    with c_scan:
+        st.markdown(f"#### {T('⚙️ Paramètres Scan', '⚙️ Scan Settings')}")
+        tr = st.number_input("TR (ms)", 20, 10000, 600, 50, key="sar_tr_tabfinal", help=T("Temps de Répétition", "Repetition Time"))
+        nb_slices = st.slider(T("Nombre de Coupes", "Number of Slices"), 1, 60, 20, key="sar_slices_tabfinal")
+        
+        rf_mode_name = st.select_slider("Mode RF", options=list(RF_MODES.keys()), value="Normal", key="sar_mode_tabfinal")
+        rf_intensity = RF_MODES[rf_mode_name]
+        
+        nex = 1; matrix = 256
+        scan_time_sec = (tr * matrix * nex) / 1000
+        if etl > 1: scan_time_sec = scan_time_sec / etl
+        
+        st.caption(f"⏱️ Scan : {int(scan_time_sec//60)}min {int(scan_time_sec%60)}s")
+
+    st.divider()
+
+    # --- 3. MOTEUR PHYSIQUE ---
+    factor_b0 = (b0_val / 1.5) ** 2 
+    
+    # Calcul Énergie
+    energy_90 = 1.0 
+    energy_angle_slider = (angle / 90.0) ** 2 
+    
+    if "GRE" in seq_type:
+        total_energy_per_slice = energy_angle_slider 
+    elif "TSE" in seq_type:
+        total_energy_per_slice = energy_90 + (etl * energy_angle_slider) 
+    else: # Spin Echo
+        total_energy_per_slice = energy_90 + (1 * energy_angle_slider) 
+    
+    # Puissance SAR
+    total_energy_per_tr = total_energy_per_slice * nb_slices
+    power_factor = total_energy_per_tr / (tr / 1000.0)
+
+    # Autres Facteurs
+    factor_weight = 75.0 / weight
+    factor_shape = PULSE_LIBRARY[pulse_shape]["factor"]
+    
+    sar_val = SAR_CALIB_FACTOR * factor_b0 * power_factor * factor_weight * rf_intensity * factor_shape
+    
+    # Calcul B1+rms
+    peak_angle = angle 
+    b1_peak_est = (peak_angle / 90.0) * 4.0 * rf_intensity 
+    
+    if "GRE" in seq_type: p_count = 1
+    elif "TSE" in seq_type: p_count = 1 + etl
+    else: p_count = 2
+    
+    duty_cycle = (p_count * nb_slices * 2.5) / tr 
+    duty_cycle = min(duty_cycle, 1.0)
+    
+    b1_rms_ut = b1_peak_est * np.sqrt(duty_cycle) * factor_shape
+
+    # --- 4. VISUALISATION ---
+    st.subheader(T("📊 Moniteurs de Sécurité", "📊 Safety Monitors"))
+    
+    c_visu_g, c_visu_d = st.columns([1, 1])
+    
+    with c_visu_g:
+        st.markdown(f"##### {T('📉 Profil RF & Charge', '📉 RF Profile & Load')}")
+        
+        fig_p, ax_p = plt.subplots(figsize=(5, 2.5))
+        t_axis = np.linspace(-1, 1, 200)
+        
+        if "Rect" in pulse_shape: y_pulse = np.where(np.abs(t_axis)<0.5, 1, 0)
+        elif "Sinc" in pulse_shape: y_pulse = np.sinc(t_axis * 3)
+        else: y_pulse = np.exp(-t_axis**2 * 5)
+            
+        y_pulse = y_pulse * b1_peak_est
+        ax_p.plot(t_axis, y_pulse, color='#8e44ad', lw=2)
+        ax_p.fill_between(t_axis, y_pulse, color='#8e44ad', alpha=0.2)
+        
+        ax_p.set_ylim(0, max(10, b1_peak_est * 1.3))
+        ax_p.set_yticks([]); ax_p.set_xticks([])
+        ax_p.set_ylabel("B1 (µT)")
+        
+        title_b1 = T(f"Pic B1: {b1_peak_est:.1f} µT (x{factor_b0:.0f} énergie à {b0_val}T)",
+                     f"B1 Peak: {b1_peak_est:.1f} µT (x{factor_b0:.0f} energy at {b0_val}T)")
+        ax_p.set_title(title_b1, fontsize=9, color='gray')
+        ax_p.grid(True, alpha=0.3)
+        st.pyplot(fig_p); plt.close(fig_p)
+        
+        if b0_val == 3.0:
+            st.error(T("⚠️ **ATTENTION 3T** : Énergie x4 par rapport à 1.5T.", 
+                       "⚠️ **WARNING 3T**: Energy x4 compared to 1.5T."))
+
+    with c_visu_d:
+        def draw_gauge_cursor(value, label, limit_norm, limit_first, max_scale=6.0):
+            fig, ax = plt.subplots(figsize=(6, 2))
+            ax.add_patch(plt.Rectangle((0, 0), limit_norm, 1, color='#2ecc71', alpha=0.9))
+            ax.text(limit_norm/2, 0.5, "NORMAL", ha='center', va='center', color='white', fontweight='bold', fontsize=8)
+            ax.add_patch(plt.Rectangle((limit_norm, 0), limit_first-limit_norm, 1, color='#f1c40f', alpha=0.9))
+            ax.text((limit_norm+limit_first)/2, 0.5, "LEVEL 1", ha='center', va='center', color='white', fontweight='bold', fontsize=8)
+            ax.add_patch(plt.Rectangle((limit_first, 0), max_scale-limit_first, 1, color='#e74c3c', alpha=0.9))
+            ax.text((limit_first+max_scale)/2, 0.5, "STOP", ha='center', va='center', color='white', fontweight='bold', fontsize=8)
+            
+            cursor_pos = min(value, max_scale - 0.1)
+            ax.plot([cursor_pos, cursor_pos], [-0.2, 1.2], color='black', linewidth=4)
+            ax.text(cursor_pos, 1.35, f"{value:.2f}", ha='center', fontweight='bold', fontsize=12, color='black')
+            ax.set_xlim(0, max_scale); ax.set_ylim(0, 1.6); ax.axis('off')
+            ax.set_title(label, loc='left', fontweight='bold')
+            return fig
+
+        st.pyplot(draw_gauge_cursor(sar_val, T("SAR Global (W/kg)", "Global SAR (W/kg)"), 2.0, 4.0))
+        
+        if sar_val > 4.0:
+            st.error(T("🚨 **BLOCAGE** : SAR > 4 W/kg.", "🚨 **LOCKOUT**: SAR > 4 W/kg."))
+        elif sar_val > 2.0:
+            st.warning(T("⚠️ **MODE CONTRÔLÉ** : Surveillance requise.", "⚠️ **CONTROLLED MODE**: Monitoring required."))
+        
+        st.pyplot(draw_gauge_cursor(b1_rms_ut, "B1+rms (µT)", 2.8, 4.0))
+
+    st.divider()
+    
+    # --- 5. FORMULES & GLOSSAIRES ---
+    c_f1, c_f2 = st.columns(2)
+    with c_f1:
+        st.markdown(f"#### {T('🌡️ Calcul du SAR', '🌡️ SAR Calculation')}")
+        # La formule est universelle (maths)
+        st.latex(r"SAR \propto B_0^2 \times E_{totale} \times \frac{1}{TR \cdot Poids}")
+        # Note : Poids est compréhensible en EN aussi ou traduit mentalement, sinon on peut mettre Weight
+    with c_f2:
+        st.markdown(f"#### {T('⚡ Calcul du B1+rms', '⚡ B1+rms Calculation')}")
+        st.latex(r"B_{1}^{+rms} \propto B_{1,peak} \times \sqrt{DC}")
+
+    c_exp1, c_exp2 = st.columns(2)
+    with c_exp1:
+        with st.expander(T("📖 Facteurs SAR (Détails)", "📖 SAR Factors (Details)")):
+             if "GRE" in seq_type:
+                st.markdown(T("""
+                * **Type** : Écho de Gradient (GRE).
+                * **Énergie** : Une seule impulsion d'excitation (Angle variable de **5° à 90°**).
+                * **Analyse** : Le SAR est réduit car il n'y a **pas de train d'impulsions de refocalisation**.
+                """, """
+                * **Type**: Gradient Echo (GRE).
+                * **Energy**: Single excitation pulse (Variable angle **5° to 90°**).
+                * **Analysis**: SAR is low because there is **no refocusing pulse train**.
+                """))
+             else:
+                st.markdown(T(f"""
+                * **Type** : Spin Echo / TSE.
+                * **Énergie** : Excitation 90° (Fixe) + Refocalisations {angle}° (Variable).
+                * **Poids du 180°** : Un pulse 180° chauffe **4x** plus qu'un 90°.
+                """, f"""
+                * **Type**: Spin Echo / TSE.
+                * **Energy**: Excitation 90° (Fixed) + Refocusing {angle}° (Variable).
+                * **Weight of 180°**: A 180° pulse heats **4x** more than a 90°.
+                """))
+                
+    with c_exp2:
+        with st.expander(T("📖 Facteurs B1+rms (Détails)", "📖 B1+rms Factors (Details)")):
+             if "GRE" in seq_type:
+                st.markdown(T("""
+                * **B1 Peak** : Dépend de l'angle $\\alpha$.
+                * **Duty Cycle** : Très faible (1 pulse par TR).
+                """, """
+                * **B1 Peak**: Depends on angle $\\alpha$.
+                * **Duty Cycle**: Very low (1 pulse per TR).
+                """))
+             else:
+                st.markdown(T("""
+                * **B1 Peak** : Intensité des pulses de refocalisation.
+                * **Duty Cycle** : Élevé en TSE (mitraillage).
+                """, """
+                * **B1 Peak**: Refocusing pulse intensity.
+                * **Duty Cycle**: High in TSE (rapid firing).
+                """))
+    
+    st.divider()
+    
+    # --- 6. INFO & SEUILS COLORÉS ---
+    with st.expander(T("📝 Seuils & Paramètres IEC", "📝 IEC Thresholds & Parameters"), expanded=False):
+        st.markdown(T("""
+        * 🟢 :green[**Mode Normal**] : **< 2.0 W/kg** (Routine Clinique, aucun risque).
+        * 🟠 :orange[**Mode Contrôlé (Niveau 1)**] : **2.0 - 4.0 W/kg** (Surveillance médicale requise).
+        * 🔴 :red[**Mode Restreint (Niveau 2)**] : **> 4.0 W/kg** (Blocage logiciel, risque d'échauffement > 1°C).
+        """, """
+        * 🟢 :green[**Normal Mode**]: **< 2.0 W/kg** (Clinical Routine, no risk).
+        * 🟠 :orange[**First Level Mode**]: **2.0 - 4.0 W/kg** (Medical supervision required).
+        * 🔴 :red[**Second Level Mode**]: **> 4.0 W/kg** (Software lockout, heating risk > 1°C).
+        """))
+
+    # --- RESTITUTION DU TABLEAU CLINIQUE DÉTAILLÉ (Markdown HTML String) ---
+    with st.expander(T("🏥 Clinique : Formes d'Impulsions & Séquences", "🏥 Clinical: Pulse Shapes & Sequences"), expanded=True):
+        
+        # En-têtes et Contenu traduits
+        h_shape = T("Forme", "Shape")
+        h_usage = T("Usage Principal", "Main Usage")
+        h_adv = T("Avantage", "Advantage")
+        h_risk = T("Risque / Inconvénient", "Risk / Drawback")
+        
+        # Ligne Sinc
+        sinc_usage = "TSE, SE (2D)"
+        sinc_adv = T("Profil de coupe rectangulaire (Pas de croisement).", "Rectangular slice profile (No crosstalk).")
+        sinc_risk = T("**SAR Élevé** (Impulsions longues & nombreuses).", "**High SAR** (Long & numerous pulses).")
+        
+        # Ligne Rect
+        rect_name = T("Rectangulaire", "Rectangular")
+        rect_usage = "MP-RAGE (3D)"
+        rect_adv = T("Ultra-rapide (TR court).", "Ultra-fast (Short TR).")
+        rect_risk = T("Coupe \"sale\" (bords flous) - corrigé par encodage 3D.", "\"Dirty\" slice (blurred edges) - corrected by 3D encoding.")
+        
+        # Ligne Gauss
+        gauss_name = T("Gaussienne", "Gaussian")
+        gauss_usage = "Fat Sat"
+        gauss_adv = T("Très sélectif en fréquence.", "Frequency selective.")
+        gauss_risk = T("**Pic B1 Élevé** (Stress sur l'ampli RF).", "**High B1 Peak** (RF Amp Stress).")
+
+        st.markdown(f"""
+        | {h_shape} | {h_usage} | {h_adv} | {h_risk} |
+        | :--- | :--- | :--- | :--- |
+        | **Sinc** | **{sinc_usage}** | {sinc_adv} | {sinc_risk} |
+        | **{rect_name}** | **{rect_usage}** | {rect_adv} | {rect_risk} |
+        | **{gauss_name}** | **{gauss_usage}** | {gauss_adv} | {gauss_risk} |
+        """)
+
+@st.fragment
+def render_architecture_tab():
+    st.header(T("🏗️ Architecture : Structure et Composants IRM", "🏗️ Architecture: MRI Structure and Components"))
+    
+    col_view, col_desc = st.columns([2.5, 1])
+    
+    with col_desc:
+        view_mode = st.radio(
+            T("Progression pédagogique :", "Pedagogical progression:"),
+            [
+                T("1. Machine (Coque & Tunnel)", "1. Machine (Shell & Bore)"),
+                T("2. Cryostat (Cylindre Hélium)", "2. Cryostat (Helium Cylinder)"),
+                "3. Aimant (B0 & Supra)", 
+                "4. Bobines de Shim (Orange)", 
+                "5. GZ (Maxwell - Vert)", 
+                "6. GY (Golay - Jaune)", 
+                "7. GX (Golay - Bleu)", 
+                T("8. Tout visualiser", "8. Show All")
+            ],
+            index=0, key="arch_final_clean"
+        )
+        
+        st.divider()
+        st.write(T("🔬 **Analyse** : Visualisation des couches internes de l'aimant.", 
+                   "🔬 **Analysis**: Visualizing the magnet's internal layers."))
+
+    with col_view:
+        fig = plt.figure(figsize=(10, 8))
+        ax = fig.add_subplot(111, projection='3d')
+        ax.set_facecolor('black'); fig.patch.set_facecolor('black')
+
+        mode_idx = ["1", "2", "3", "4", "5", "6", "7", "8"].index(view_mode[0])
+        show_all = (mode_idx == 7)
+
+        def get_poids(target_idx):
+            if show_all:
+                if target_idx >= 4: return 1.0  # Gradients à 100%
+                return 0.3                      # Reste à 30%
+            if target_idx == mode_idx: return 1.0
+            if target_idx == 1 and mode_idx == 2: return 0.6 # Cryo pendant B0
+            if target_idx < mode_idx: return 0.25
+            return 0.0
+
+        def draw_perfect_edges(r, l, alpha):
+            """Rétablit les arêtes XYZ de la coque"""
+            for y in [-r, r]:
+                for z in [-r, r]:
+                    ax.plot([-l, l], [y, y], [z, z], color='white', lw=1.5, alpha=alpha)
+            for x in [-l, l]:
+                for side in [-r, r]:
+                    ax.plot([x, x], [-r, r], [side, side], color='white', lw=1, alpha=alpha*0.6)
+                    ax.plot([x, x], [side, side], [-r, r], color='white', lw=1, alpha=alpha*0.6)
+
+        def draw_bipolar_ramp(color, mode, alpha):
+            """Rampes visibles uniquement en mode individuel"""
+            if not show_all:
+                pts = np.linspace(-1.1, 1.1, 40)
+                for p in pts:
+                    if abs(p) < 0.05: continue
+                    amp = p * 0.4
+                    if mode == "GZ": ax.plot([p, p], [0, 0], [0, amp], color=color, lw=3, alpha=alpha)
+                    elif mode == "GX": ax.plot([0, 0], [p, p], [0, amp], color=color, lw=3, alpha=alpha)
+                    elif mode == "GY": ax.plot([0, 0], [0, amp], [p, p], color=color, lw=3, alpha=alpha)
+                l_s = 1.35
+                ax.text(l_s if mode=="GZ" else 0, l_s if mode=="GX" else 0, l_s if mode=="GY" else 0, "+", color=color, fontsize=18, weight='bold', ha='center', alpha=alpha)
+                ax.text(-l_s if mode=="GZ" else 0, -l_s if mode=="GX" else 0, -l_s if mode=="GY" else 0, "-", color=color, fontsize=18, weight='bold', ha='center', alpha=alpha)
+
+        def draw_coil(z_r, t_r, color, alpha):
+            t_g = np.deg2rad(np.linspace(t_r[0], t_r[1], 30)); r = 1.05
+            ax.plot([z_r[0], z_r[1]], [r*np.cos(t_g[0])]*2, [r*np.sin(t_g[0])]*2, color=color, lw=5, alpha=alpha)
+            ax.plot([z_r[0], z_r[1]], [r*np.cos(t_g[-1])]*2, [r*np.sin(t_g[-1])]*2, color=color, lw=5, alpha=alpha)
+            ax.plot([z_r[0]]*30, r*np.cos(t_g), r*np.sin(t_g), color=color, lw=5, alpha=alpha)
+            ax.plot([z_r[1]]*30, r*np.cos(t_g), r*np.sin(t_g), color=color, lw=5, alpha=alpha)
+
+        # --- 1. MACHINE & TUNNEL ---
+        p_m = get_poids(0)
+        if p_m > 0 or show_all:
+            draw_perfect_edges(1.9, 2.2, p_m)
+            a_tun = 0.5 if show_all else 0.15
+            z_t = np.linspace(-2.2, 2.2, 40); t_t = np.linspace(0, 2*np.pi, 40)
+            if show_all: t_t = np.linspace(np.pi/2, 2*np.pi, 40)
+            Z_t, T_t = np.meshgrid(z_t, t_t)
+            ax.plot_surface(Z_t, 0.85*np.cos(T_t), 0.85*np.sin(T_t), color='white', alpha=a_tun)
+
+        # --- 2. CRYOSTAT (CYLINDRE) ---
+        p_c = get_poids(1)
+        if p_c > 0:
+            z_c = np.linspace(-2.0, 2.0, 40); t_c_s = np.linspace(0, 2*np.pi, 40)
+            if show_all: t_c_s = np.linspace(np.pi/2, 2*np.pi, 40)
+            Z_c, T_c = np.meshgrid(z_c, t_c_s)
+            ax.plot_surface(Z_c, 1.75*np.cos(T_c), 1.75*np.sin(T_c), color='#00d2ff', alpha=p_c*0.2)
+
+        # --- 3. AIMANT SUPRA (B0) ---
+        p_s = get_poids(2)
+        if p_s > 0:
+            z_h = np.linspace(-1.9, 1.9, 800)
+            ax.plot(z_h, 1.6*np.cos(40*np.pi*z_h), 1.6*np.sin(40*np.pi*z_h), color='#8e44ad', alpha=p_s, lw=1.5)
+            ax.quiver(-2.4, 0, 0, 4.8, 0, 0, color='white', lw=1.5, alpha=p_s, arrow_length_ratio=0.06)
+            ax.text(2.2, 0, 0.3, "B0", color='white', fontsize=12, weight='bold', alpha=p_s)
+
+        # --- 4. SHIM (ORANGE) ---
+        p_sh = get_poids(3)
+        t_circ = np.linspace(0, 2*np.pi, 100)
+        if p_sh > 0:
+            for z_p in [-1.8, 1.8]:
+                ax.plot([z_p]*100, 1.45*np.cos(t_circ), 1.45*np.sin(t_circ), color='orange', lw=6, alpha=p_sh)
+
+        # --- 5, 6, 7. GRADIENTS ---
+        # GZ
+        p_gz = get_poids(4)
+        if p_gz > 0:
+            ax.plot([0.8]*100, np.cos(t_circ), np.sin(t_circ), color='#27ae60', lw=7, alpha=p_gz)
+            ax.plot([-0.8]*100, np.cos(t_circ), np.sin(t_circ), color='#27ae60', lw=7, alpha=p_gz)
+            if mode_idx == 4: draw_bipolar_ramp('#27ae60', "GZ", 1.0)
+        # GY
+        p_gy = get_poids(5)
+        if p_gy > 0:
+            for z in [[0.1, 0.75], [-0.75, -0.1]]:
+                for t in [[65, 115], [245, 295]]: draw_coil(z, t, '#f1c40f', p_gy)
+            if mode_idx == 5: draw_bipolar_ramp('#f1c40f', "GY", 1.0)
+        # GX
+        p_gx = get_poids(6)
+        if p_gx > 0:
+            for z in [[0.1, 0.75], [-0.75, -0.1]]:
+                for t in [[-25, 25], [155, 205]]: draw_coil(z, t, '#2980b9', p_gx)
+            if mode_idx == 6: draw_bipolar_ramp('#2980b9', "GX", 1.0)
+
+        ax.view_init(elev=22, azim=-125)
+        ax.set_axis_off()
+        st.pyplot(fig)
+
+    # --- EXPLICATIONS DÉTAILLÉES ---
+    st.divider()
+    cols = st.columns(3)
+    with cols[0]:
+        st.subheader("🧊 Cryogénie & B0")
+        st.write("**Coque & Tunnel** : Structure mécanique et accueil du patient.")
+        st.write("**Cryostat** : Enceinte thermique isolant l'hélium liquide (-269°C).")
+        st.write("**Aimant Supra** : Bobinage principal générant le champ statique stable $B_0$.")
+    with cols[1]:
+        st.subheader("🎯 Homogénéité (Shim)")
+        st.write("**Bobines de Shim** : Compensent les inhomogénéités locales du champ magnétique.")
+        st.write("**Impact** : Essentiel pour obtenir une résonance précise sur l'ensemble de la zone imagée.")
+    with cols[2]:
+        st.subheader("📡 Codage Spatial")
+        st.write("**GZ (Vert)** : Maxwell coils. Sélection de la coupe transversale.")
+        st.write("**GY/GX (Jaune/Bleu)** : Golay coils. Codage de phase et de fréquence.")
+        st.write("**Rampes +/-** : Illustrent la variation linéaire de champ induite par les gradients.")
 # --- 13. AFFICHAGE FINAL / FINAL DISPLAY ---
 st.title(T("Simulateur MagnétoVault", "MagnetoVault Simulator"))
 
@@ -1198,9 +1671,43 @@ with t1:
     zoom_down = mat / S_render
     img_pix = ndimage.zoom(img_sim, zoom_down, order=0)
     img_disp = ndimage.zoom(img_pix, 256.0 / mat, order=0)
+
+    # 0. Initialisation des variables de contrôle
+    decentrage_penalite = 0.0
     
     if turbo > 1:
-        img_disp = ndimage.gaussian_filter(img_disp, sigma=(turbo-1)*0.2)
+        # 1. Milieu théorique du train d'échos (ex: 8.5 pour turbo 16)
+        center_index = (turbo + 1) / 2
+        
+        # 2. Position de l'écho qui porte le contraste (TE effectif / Echo Spacing)
+        effective_index = max(1, min(turbo, round(te / max(es, 1.0))))
+        
+        # 3. Calcul de la distance absolue par rapport au centre
+        dist_from_center = abs(effective_index - center_index)
+        
+        # 4. Logique de "Zone de Confort" (+/- 3 échos)
+        if dist_from_center <= 3:
+            # Dans la zone de +/- 3 : flou résiduel quasi invisible
+            sigma_base = 0.01 
+            decentrage_penalite = 0.0
+        else:
+            # Hors zone : la pénalité augmente avec la distance au-delà du seuil de 3
+            # On normalise l'écart restant par rapport à la moitié du train
+            decentrage_penalite = (dist_from_center - 3) / (turbo / 2)
+            sigma_base = 0.01 + (decentrage_penalite * 0.5) # 0.5 définit la sévérité du flou
+            
+        # 5. Application du flou proportionnel au facteur turbo
+        sigma_val = (turbo - 1) * sigma_base
+        img_disp = ndimage.gaussian_filter(img_disp, sigma=sigma_val)
+
+    # --- AFFICHAGE DES MESSAGES PÉDAGOGIQUES (Sidebar) ---
+    if turbo > 1:
+        if decentrage_penalite > 0.5:
+            st.sidebar.error(T("🛑 Flou T2 critique : TE trop éloigné du centre !", "🛑 Critical T2 blur: TE too far from center!"))
+        elif decentrage_penalite > 0:
+            st.sidebar.warning(T("⚠️ Flou T2 visible : TE hors zone optimale.", "⚠️ Visible T2 blur: TE out of optimal zone."))
+        else:
+            st.sidebar.success(T("✨ Netteté optimale : TE dans la zone de confort (+/- 3).", "✨ Optimal sharpness: TE in comfort zone (+/- 3)."))
 
     # BRUIT VISUEL (Loi en 1/SNR²)
     # Si iPAT activé, le SNR chute -> Le bruit monte en flèche
@@ -4243,448 +4750,7 @@ with t15:
             st.pyplot(fig_psir)
             plt.close(fig_psir)
 with t16:
-    st.header(T("🔥 Sécurité RF : Console de Contrôle", "🔥 RF Safety: Control Console"))
-    
-    # --- 0. AVERTISSEMENT ---
-    st.warning(T(
-        "⚠️ **Simulateur Clinique :** Module reproduisant les contraintes réelles (IEC 60601-2-33). **Ce module est déconnecté du reste du simulateur et ne doit PAS être utilisé à des fins cliniques.**",
-        "⚠️ **Clinical Simulator:** Module reproducing real constraints (IEC 60601-2-33). **This module is disconnected from the rest of the simulator and must NOT be used for clinical purposes.**"
-    ))
+    render_safety_tab()
 
-    # --- 1. CONFIGURATION ---
-    SAR_CALIB_FACTOR = 0.005
-    
-    # Définition dynamique pour la traduction des descriptions
-    # Les clés restent techniques pour la logique, mais on peut les afficher traduites si besoin
-    # Ici, je traduis les clés directement pour le menu déroulant
-    
-    k_sinc = T("Sinc (Standard 2D)", "Sinc (Standard 2D)")
-    k_rect = T("Rect (Hard Pulse 3D)", "Rect (Hard Pulse 3D)")
-    k_gauss = T("Gauss (Sélectif)", "Gauss (Selective)")
-
-    PULSE_LIBRARY = {
-        k_sinc:  {"factor": 1.0, "desc": T("Pour coupes 2D nettes (SE, TSE, GRE)", "For sharp 2D slices (SE, TSE, GRE)")},
-        k_rect:  {"factor": 1.4, "desc": T("Pour volumes 3D rapides (MP-RAGE)", "For fast 3D volumes (MP-RAGE)")},
-        k_gauss: {"factor": 0.7, "desc": T("Pour Saturation ou Inversion", "For Saturation or Inversion")}
-    }
-    
-    RF_MODES = {
-        "Low SAR": 0.8,
-        "Normal": 1.0,
-        "High Power": 1.2
-    }
-
-    # --- 2. ENTRÉES UTILISATEUR ---
-    c_pat, c_seq, c_scan = st.columns(3)
-    
-    with c_pat:
-        st.markdown(f"#### {T('👤 Patient', '👤 Patient')}")
-        weight = st.number_input(T("Poids (kg)", "Weight (kg)"), 30.0, 150.0, 75.0, 5.0, key="sar_w_tabfinal")
-        height = st.number_input(T("Taille (m)", "Height (m)"), 1.0, 2.2, 1.75, 0.05, key="sar_h_tabfinal")
-
-    with c_seq:
-        st.markdown(f"#### {T('📡 Séquence', '📡 Sequence')}")
-        
-        # Options traduites mais contenant les acronymes pour la logique (SE, TSE, GRE)
-        opt_se = T("Spin Echo (SE)", "Spin Echo (SE)")
-        opt_tse = T("Turbo Spin Echo (TSE)", "Turbo Spin Echo (TSE)")
-        opt_gre = T("Echo de Gradient (GRE)", "Gradient Echo (GRE)")
-        
-        seq_type = st.selectbox(T("Type Séquence", "Sequence Type"), [opt_se, opt_tse, opt_gre], key="sar_type_tabfinal")
-        
-        b0_val = st.radio(T("Champ Magnétique (B0)", "Magnetic Field (B0)"), [1.5, 3.0], horizontal=True, key="sar_b0_tabfinal")
-        
-        pulse_shape = st.selectbox(T("Forme Onde", "Waveform"), list(PULSE_LIBRARY.keys()), index=0, key="sar_shape_tabfinal")
-        
-        # Presets et Labels Dynamiques
-        if "GRE" in seq_type:
-            def_etl, def_ang = 0, 20
-            label_angle = T("Angle d'Excitation (α)", "Excitation Angle (α)")
-            help_angle = T("Angle de bascule (5° à 90° en clinique)", "Flip angle (5° to 90° clinical)")
-        elif "TSE" in seq_type: 
-            def_etl, def_ang = 3, 180
-            label_angle = T("Angle de Refoc (°)", "Refoc Angle (°)")
-            help_angle = T("Angle des impulsions de refocalisation", "Refocusing pulse angle")
-        else: 
-            def_etl, def_ang = 0, 180
-            label_angle = T("Angle de Refoc (°)", "Refoc Angle (°)")
-            help_angle = T("Angle de l'impulsion de refocalisation", "Refocusing pulse angle")
-
-        angle = st.slider(label_angle, 5, 180, def_ang, key="sar_angle_tabfinal", help=help_angle)
-        
-        if "TSE" in seq_type:
-            etl = st.slider(T("ETL (Facteur Turbo)", "ETL (Turbo Factor)"), 2, 64, def_etl, key="sar_etl_tabfinal")
-        else:
-            etl = 0
-            st.slider("ETL", 0, 1, 0, disabled=True, key="sar_etl_dis_tabfinal")
-
-    with c_scan:
-        st.markdown(f"#### {T('⚙️ Paramètres Scan', '⚙️ Scan Settings')}")
-        tr = st.number_input("TR (ms)", 20, 10000, 600, 50, key="sar_tr_tabfinal", help=T("Temps de Répétition", "Repetition Time"))
-        nb_slices = st.slider(T("Nombre de Coupes", "Number of Slices"), 1, 60, 20, key="sar_slices_tabfinal")
-        
-        rf_mode_name = st.select_slider("Mode RF", options=list(RF_MODES.keys()), value="Normal", key="sar_mode_tabfinal")
-        rf_intensity = RF_MODES[rf_mode_name]
-        
-        nex = 1; matrix = 256
-        scan_time_sec = (tr * matrix * nex) / 1000
-        if etl > 1: scan_time_sec = scan_time_sec / etl
-        
-        st.caption(f"⏱️ Scan : {int(scan_time_sec//60)}min {int(scan_time_sec%60)}s")
-
-    st.divider()
-
-    # --- 3. MOTEUR PHYSIQUE ---
-    factor_b0 = (b0_val / 1.5) ** 2 
-    
-    # Calcul Énergie
-    energy_90 = 1.0 
-    energy_angle_slider = (angle / 90.0) ** 2 
-    
-    if "GRE" in seq_type:
-        total_energy_per_slice = energy_angle_slider 
-    elif "TSE" in seq_type:
-        total_energy_per_slice = energy_90 + (etl * energy_angle_slider) 
-    else: # Spin Echo
-        total_energy_per_slice = energy_90 + (1 * energy_angle_slider) 
-    
-    # Puissance SAR
-    total_energy_per_tr = total_energy_per_slice * nb_slices
-    power_factor = total_energy_per_tr / (tr / 1000.0)
-
-    # Autres Facteurs
-    factor_weight = 75.0 / weight
-    factor_shape = PULSE_LIBRARY[pulse_shape]["factor"]
-    
-    sar_val = SAR_CALIB_FACTOR * factor_b0 * power_factor * factor_weight * rf_intensity * factor_shape
-    
-    # Calcul B1+rms
-    peak_angle = angle 
-    b1_peak_est = (peak_angle / 90.0) * 4.0 * rf_intensity 
-    
-    if "GRE" in seq_type: p_count = 1
-    elif "TSE" in seq_type: p_count = 1 + etl
-    else: p_count = 2
-    
-    duty_cycle = (p_count * nb_slices * 2.5) / tr 
-    duty_cycle = min(duty_cycle, 1.0)
-    
-    b1_rms_ut = b1_peak_est * np.sqrt(duty_cycle) * factor_shape
-
-    # --- 4. VISUALISATION ---
-    st.subheader(T("📊 Moniteurs de Sécurité", "📊 Safety Monitors"))
-    
-    c_visu_g, c_visu_d = st.columns([1, 1])
-    
-    with c_visu_g:
-        st.markdown(f"##### {T('📉 Profil RF & Charge', '📉 RF Profile & Load')}")
-        
-        fig_p, ax_p = plt.subplots(figsize=(5, 2.5))
-        t_axis = np.linspace(-1, 1, 200)
-        
-        if "Rect" in pulse_shape: y_pulse = np.where(np.abs(t_axis)<0.5, 1, 0)
-        elif "Sinc" in pulse_shape: y_pulse = np.sinc(t_axis * 3)
-        else: y_pulse = np.exp(-t_axis**2 * 5)
-            
-        y_pulse = y_pulse * b1_peak_est
-        ax_p.plot(t_axis, y_pulse, color='#8e44ad', lw=2)
-        ax_p.fill_between(t_axis, y_pulse, color='#8e44ad', alpha=0.2)
-        
-        ax_p.set_ylim(0, max(10, b1_peak_est * 1.3))
-        ax_p.set_yticks([]); ax_p.set_xticks([])
-        ax_p.set_ylabel("B1 (µT)")
-        
-        title_b1 = T(f"Pic B1: {b1_peak_est:.1f} µT (x{factor_b0:.0f} énergie à {b0_val}T)",
-                     f"B1 Peak: {b1_peak_est:.1f} µT (x{factor_b0:.0f} energy at {b0_val}T)")
-        ax_p.set_title(title_b1, fontsize=9, color='gray')
-        ax_p.grid(True, alpha=0.3)
-        st.pyplot(fig_p); plt.close(fig_p)
-        
-        if b0_val == 3.0:
-            st.error(T("⚠️ **ATTENTION 3T** : Énergie x4 par rapport à 1.5T.", 
-                       "⚠️ **WARNING 3T**: Energy x4 compared to 1.5T."))
-
-    with c_visu_d:
-        def draw_gauge_cursor(value, label, limit_norm, limit_first, max_scale=6.0):
-            fig, ax = plt.subplots(figsize=(6, 2))
-            ax.add_patch(plt.Rectangle((0, 0), limit_norm, 1, color='#2ecc71', alpha=0.9))
-            ax.text(limit_norm/2, 0.5, "NORMAL", ha='center', va='center', color='white', fontweight='bold', fontsize=8)
-            ax.add_patch(plt.Rectangle((limit_norm, 0), limit_first-limit_norm, 1, color='#f1c40f', alpha=0.9))
-            ax.text((limit_norm+limit_first)/2, 0.5, "LEVEL 1", ha='center', va='center', color='white', fontweight='bold', fontsize=8)
-            ax.add_patch(plt.Rectangle((limit_first, 0), max_scale-limit_first, 1, color='#e74c3c', alpha=0.9))
-            ax.text((limit_first+max_scale)/2, 0.5, "STOP", ha='center', va='center', color='white', fontweight='bold', fontsize=8)
-            
-            cursor_pos = min(value, max_scale - 0.1)
-            ax.plot([cursor_pos, cursor_pos], [-0.2, 1.2], color='black', linewidth=4)
-            ax.text(cursor_pos, 1.35, f"{value:.2f}", ha='center', fontweight='bold', fontsize=12, color='black')
-            ax.set_xlim(0, max_scale); ax.set_ylim(0, 1.6); ax.axis('off')
-            ax.set_title(label, loc='left', fontweight='bold')
-            return fig
-
-        st.pyplot(draw_gauge_cursor(sar_val, T("SAR Global (W/kg)", "Global SAR (W/kg)"), 2.0, 4.0))
-        
-        if sar_val > 4.0:
-            st.error(T("🚨 **BLOCAGE** : SAR > 4 W/kg.", "🚨 **LOCKOUT**: SAR > 4 W/kg."))
-        elif sar_val > 2.0:
-            st.warning(T("⚠️ **MODE CONTRÔLÉ** : Surveillance requise.", "⚠️ **CONTROLLED MODE**: Monitoring required."))
-        
-        st.pyplot(draw_gauge_cursor(b1_rms_ut, "B1+rms (µT)", 2.8, 4.0))
-
-    st.divider()
-    
-    # --- 5. FORMULES & GLOSSAIRES ---
-    c_f1, c_f2 = st.columns(2)
-    with c_f1:
-        st.markdown(f"#### {T('🌡️ Calcul du SAR', '🌡️ SAR Calculation')}")
-        # La formule est universelle (maths)
-        st.latex(r"SAR \propto B_0^2 \times E_{totale} \times \frac{1}{TR \cdot Poids}")
-        # Note : Poids est compréhensible en EN aussi ou traduit mentalement, sinon on peut mettre Weight
-    with c_f2:
-        st.markdown(f"#### {T('⚡ Calcul du B1+rms', '⚡ B1+rms Calculation')}")
-        st.latex(r"B_{1}^{+rms} \propto B_{1,peak} \times \sqrt{DC}")
-
-    c_exp1, c_exp2 = st.columns(2)
-    with c_exp1:
-        with st.expander(T("📖 Facteurs SAR (Détails)", "📖 SAR Factors (Details)")):
-             if "GRE" in seq_type:
-                st.markdown(T("""
-                * **Type** : Écho de Gradient (GRE).
-                * **Énergie** : Une seule impulsion d'excitation (Angle variable de **5° à 90°**).
-                * **Analyse** : Le SAR est réduit car il n'y a **pas de train d'impulsions de refocalisation**.
-                """, """
-                * **Type**: Gradient Echo (GRE).
-                * **Energy**: Single excitation pulse (Variable angle **5° to 90°**).
-                * **Analysis**: SAR is low because there is **no refocusing pulse train**.
-                """))
-             else:
-                st.markdown(T(f"""
-                * **Type** : Spin Echo / TSE.
-                * **Énergie** : Excitation 90° (Fixe) + Refocalisations {angle}° (Variable).
-                * **Poids du 180°** : Un pulse 180° chauffe **4x** plus qu'un 90°.
-                """, f"""
-                * **Type**: Spin Echo / TSE.
-                * **Energy**: Excitation 90° (Fixed) + Refocusing {angle}° (Variable).
-                * **Weight of 180°**: A 180° pulse heats **4x** more than a 90°.
-                """))
-                
-    with c_exp2:
-        with st.expander(T("📖 Facteurs B1+rms (Détails)", "📖 B1+rms Factors (Details)")):
-             if "GRE" in seq_type:
-                st.markdown(T("""
-                * **B1 Peak** : Dépend de l'angle $\\alpha$.
-                * **Duty Cycle** : Très faible (1 pulse par TR).
-                """, """
-                * **B1 Peak**: Depends on angle $\\alpha$.
-                * **Duty Cycle**: Very low (1 pulse per TR).
-                """))
-             else:
-                st.markdown(T("""
-                * **B1 Peak** : Intensité des pulses de refocalisation.
-                * **Duty Cycle** : Élevé en TSE (mitraillage).
-                """, """
-                * **B1 Peak**: Refocusing pulse intensity.
-                * **Duty Cycle**: High in TSE (rapid firing).
-                """))
-    
-    st.divider()
-    
-    # --- 6. INFO & SEUILS COLORÉS ---
-    with st.expander(T("📝 Seuils & Paramètres IEC", "📝 IEC Thresholds & Parameters"), expanded=False):
-        st.markdown(T("""
-        * 🟢 :green[**Mode Normal**] : **< 2.0 W/kg** (Routine Clinique, aucun risque).
-        * 🟠 :orange[**Mode Contrôlé (Niveau 1)**] : **2.0 - 4.0 W/kg** (Surveillance médicale requise).
-        * 🔴 :red[**Mode Restreint (Niveau 2)**] : **> 4.0 W/kg** (Blocage logiciel, risque d'échauffement > 1°C).
-        """, """
-        * 🟢 :green[**Normal Mode**]: **< 2.0 W/kg** (Clinical Routine, no risk).
-        * 🟠 :orange[**First Level Mode**]: **2.0 - 4.0 W/kg** (Medical supervision required).
-        * 🔴 :red[**Second Level Mode**]: **> 4.0 W/kg** (Software lockout, heating risk > 1°C).
-        """))
-
-    # --- RESTITUTION DU TABLEAU CLINIQUE DÉTAILLÉ (Markdown HTML String) ---
-    with st.expander(T("🏥 Clinique : Formes d'Impulsions & Séquences", "🏥 Clinical: Pulse Shapes & Sequences"), expanded=True):
-        
-        # En-têtes et Contenu traduits
-        h_shape = T("Forme", "Shape")
-        h_usage = T("Usage Principal", "Main Usage")
-        h_adv = T("Avantage", "Advantage")
-        h_risk = T("Risque / Inconvénient", "Risk / Drawback")
-        
-        # Ligne Sinc
-        sinc_usage = "TSE, SE (2D)"
-        sinc_adv = T("Profil de coupe rectangulaire (Pas de croisement).", "Rectangular slice profile (No crosstalk).")
-        sinc_risk = T("**SAR Élevé** (Impulsions longues & nombreuses).", "**High SAR** (Long & numerous pulses).")
-        
-        # Ligne Rect
-        rect_name = T("Rectangulaire", "Rectangular")
-        rect_usage = "MP-RAGE (3D)"
-        rect_adv = T("Ultra-rapide (TR court).", "Ultra-fast (Short TR).")
-        rect_risk = T("Coupe \"sale\" (bords flous) - corrigé par encodage 3D.", "\"Dirty\" slice (blurred edges) - corrected by 3D encoding.")
-        
-        # Ligne Gauss
-        gauss_name = T("Gaussienne", "Gaussian")
-        gauss_usage = "Fat Sat"
-        gauss_adv = T("Très sélectif en fréquence.", "Frequency selective.")
-        gauss_risk = T("**Pic B1 Élevé** (Stress sur l'ampli RF).", "**High B1 Peak** (RF Amp Stress).")
-
-        st.markdown(f"""
-        | {h_shape} | {h_usage} | {h_adv} | {h_risk} |
-        | :--- | :--- | :--- | :--- |
-        | **Sinc** | **{sinc_usage}** | {sinc_adv} | {sinc_risk} |
-        | **{rect_name}** | **{rect_usage}** | {rect_adv} | {rect_risk} |
-        | **{gauss_name}** | **{gauss_usage}** | {gauss_adv} | {gauss_risk} |
-        """)
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-import numpy as np
-import streamlit as st
-
-# ==============================================================================
-# [TAB 17 : ARCHITECTURE - VERSION NETTOYÉE ET EXPLICATIVE]
-# ==============================================================================
 with t17:
-    st.header(T("🏗️ Architecture : Structure et Composants IRM", "🏗️ Architecture: MRI Structure and Components"))
-    
-    col_view, col_desc = st.columns([2.5, 1])
-    
-    with col_desc:
-        view_mode = st.radio(
-            T("Progression pédagogique :", "Pedagogical progression:"),
-            [
-                T("1. Machine (Coque & Tunnel)", "1. Machine (Shell & Bore)"),
-                T("2. Cryostat (Cylindre Hélium)", "2. Cryostat (Helium Cylinder)"),
-                "3. Aimant (B0 & Supra)", 
-                "4. Bobines de Shim (Orange)", 
-                "5. GZ (Maxwell - Vert)", 
-                "6. GY (Golay - Jaune)", 
-                "7. GX (Golay - Bleu)", 
-                T("8. Tout visualiser", "8. Show All")
-            ],
-            index=0, key="arch_final_clean"
-        )
-        
-        st.divider()
-        st.write(T("🔬 **Analyse** : Visualisation des couches internes de l'aimant.", 
-                   "🔬 **Analysis**: Visualizing the magnet's internal layers."))
-
-    with col_view:
-        fig = plt.figure(figsize=(10, 8))
-        ax = fig.add_subplot(111, projection='3d')
-        ax.set_facecolor('black'); fig.patch.set_facecolor('black')
-
-        mode_idx = ["1", "2", "3", "4", "5", "6", "7", "8"].index(view_mode[0])
-        show_all = (mode_idx == 7)
-
-        def get_poids(target_idx):
-            if show_all:
-                if target_idx >= 4: return 1.0  # Gradients à 100%
-                return 0.3                      # Reste à 30%
-            if target_idx == mode_idx: return 1.0
-            if target_idx == 1 and mode_idx == 2: return 0.6 # Cryo pendant B0
-            if target_idx < mode_idx: return 0.25
-            return 0.0
-
-        def draw_perfect_edges(r, l, alpha):
-            """Rétablit les arêtes XYZ de la coque"""
-            for y in [-r, r]:
-                for z in [-r, r]:
-                    ax.plot([-l, l], [y, y], [z, z], color='white', lw=1.5, alpha=alpha)
-            for x in [-l, l]:
-                for side in [-r, r]:
-                    ax.plot([x, x], [-r, r], [side, side], color='white', lw=1, alpha=alpha*0.6)
-                    ax.plot([x, x], [side, side], [-r, r], color='white', lw=1, alpha=alpha*0.6)
-
-        def draw_bipolar_ramp(color, mode, alpha):
-            """Rampes visibles uniquement en mode individuel"""
-            if not show_all:
-                pts = np.linspace(-1.1, 1.1, 40)
-                for p in pts:
-                    if abs(p) < 0.05: continue
-                    amp = p * 0.4
-                    if mode == "GZ": ax.plot([p, p], [0, 0], [0, amp], color=color, lw=3, alpha=alpha)
-                    elif mode == "GX": ax.plot([0, 0], [p, p], [0, amp], color=color, lw=3, alpha=alpha)
-                    elif mode == "GY": ax.plot([0, 0], [0, amp], [p, p], color=color, lw=3, alpha=alpha)
-                l_s = 1.35
-                ax.text(l_s if mode=="GZ" else 0, l_s if mode=="GX" else 0, l_s if mode=="GY" else 0, "+", color=color, fontsize=18, weight='bold', ha='center', alpha=alpha)
-                ax.text(-l_s if mode=="GZ" else 0, -l_s if mode=="GX" else 0, -l_s if mode=="GY" else 0, "-", color=color, fontsize=18, weight='bold', ha='center', alpha=alpha)
-
-        def draw_coil(z_r, t_r, color, alpha):
-            t_g = np.deg2rad(np.linspace(t_r[0], t_r[1], 30)); r = 1.05
-            ax.plot([z_r[0], z_r[1]], [r*np.cos(t_g[0])]*2, [r*np.sin(t_g[0])]*2, color=color, lw=5, alpha=alpha)
-            ax.plot([z_r[0], z_r[1]], [r*np.cos(t_g[-1])]*2, [r*np.sin(t_g[-1])]*2, color=color, lw=5, alpha=alpha)
-            ax.plot([z_r[0]]*30, r*np.cos(t_g), r*np.sin(t_g), color=color, lw=5, alpha=alpha)
-            ax.plot([z_r[1]]*30, r*np.cos(t_g), r*np.sin(t_g), color=color, lw=5, alpha=alpha)
-
-        # --- 1. MACHINE & TUNNEL ---
-        p_m = get_poids(0)
-        if p_m > 0 or show_all:
-            draw_perfect_edges(1.9, 2.2, p_m)
-            a_tun = 0.5 if show_all else 0.15
-            z_t = np.linspace(-2.2, 2.2, 40); t_t = np.linspace(0, 2*np.pi, 40)
-            if show_all: t_t = np.linspace(np.pi/2, 2*np.pi, 40)
-            Z_t, T_t = np.meshgrid(z_t, t_t)
-            ax.plot_surface(Z_t, 0.85*np.cos(T_t), 0.85*np.sin(T_t), color='white', alpha=a_tun)
-
-        # --- 2. CRYOSTAT (CYLINDRE) ---
-        p_c = get_poids(1)
-        if p_c > 0:
-            z_c = np.linspace(-2.0, 2.0, 40); t_c_s = np.linspace(0, 2*np.pi, 40)
-            if show_all: t_c_s = np.linspace(np.pi/2, 2*np.pi, 40)
-            Z_c, T_c = np.meshgrid(z_c, t_c_s)
-            ax.plot_surface(Z_c, 1.75*np.cos(T_c), 1.75*np.sin(T_c), color='#00d2ff', alpha=p_c*0.2)
-
-        # --- 3. AIMANT SUPRA (B0) ---
-        p_s = get_poids(2)
-        if p_s > 0:
-            z_h = np.linspace(-1.9, 1.9, 800)
-            ax.plot(z_h, 1.6*np.cos(40*np.pi*z_h), 1.6*np.sin(40*np.pi*z_h), color='#8e44ad', alpha=p_s, lw=1.5)
-            ax.quiver(-2.4, 0, 0, 4.8, 0, 0, color='white', lw=1.5, alpha=p_s, arrow_length_ratio=0.06)
-            ax.text(2.2, 0, 0.3, "B0", color='white', fontsize=12, weight='bold', alpha=p_s)
-
-        # --- 4. SHIM (ORANGE) ---
-        p_sh = get_poids(3)
-        t_circ = np.linspace(0, 2*np.pi, 100)
-        if p_sh > 0:
-            for z_p in [-1.8, 1.8]:
-                ax.plot([z_p]*100, 1.45*np.cos(t_circ), 1.45*np.sin(t_circ), color='orange', lw=6, alpha=p_sh)
-
-        # --- 5, 6, 7. GRADIENTS ---
-        # GZ
-        p_gz = get_poids(4)
-        if p_gz > 0:
-            ax.plot([0.8]*100, np.cos(t_circ), np.sin(t_circ), color='#27ae60', lw=7, alpha=p_gz)
-            ax.plot([-0.8]*100, np.cos(t_circ), np.sin(t_circ), color='#27ae60', lw=7, alpha=p_gz)
-            if mode_idx == 4: draw_bipolar_ramp('#27ae60', "GZ", 1.0)
-        # GY
-        p_gy = get_poids(5)
-        if p_gy > 0:
-            for z in [[0.1, 0.75], [-0.75, -0.1]]:
-                for t in [[65, 115], [245, 295]]: draw_coil(z, t, '#f1c40f', p_gy)
-            if mode_idx == 5: draw_bipolar_ramp('#f1c40f', "GY", 1.0)
-        # GX
-        p_gx = get_poids(6)
-        if p_gx > 0:
-            for z in [[0.1, 0.75], [-0.75, -0.1]]:
-                for t in [[-25, 25], [155, 205]]: draw_coil(z, t, '#2980b9', p_gx)
-            if mode_idx == 6: draw_bipolar_ramp('#2980b9', "GX", 1.0)
-
-        ax.view_init(elev=22, azim=-125)
-        ax.set_axis_off()
-        st.pyplot(fig)
-
-    # --- EXPLICATIONS DÉTAILLÉES ---
-    st.divider()
-    cols = st.columns(3)
-    with cols[0]:
-        st.subheader("🧊 Cryogénie & B0")
-        st.write("**Coque & Tunnel** : Structure mécanique et accueil du patient.")
-        st.write("**Cryostat** : Enceinte thermique isolant l'hélium liquide (-269°C).")
-        st.write("**Aimant Supra** : Bobinage principal générant le champ statique stable $B_0$.")
-    with cols[1]:
-        st.subheader("🎯 Homogénéité (Shim)")
-        st.write("**Bobines de Shim** : Compensent les inhomogénéités locales du champ magnétique.")
-        st.write("**Impact** : Essentiel pour obtenir une résonance précise sur l'ensemble de la zone imagée.")
-    with cols[2]:
-        st.subheader("📡 Codage Spatial")
-        st.write("**GZ (Vert)** : Maxwell coils. Sélection de la coupe transversale.")
-        st.write("**GY/GX (Jaune/Bleu)** : Golay coils. Codage de phase et de fréquence.")
-        st.write("**Rampes +/-** : Illustrent la variation linéaire de champ induite par les gradients.")
+    render_architecture_tab()
