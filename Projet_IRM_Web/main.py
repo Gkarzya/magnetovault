@@ -1343,7 +1343,7 @@ t_home, t1, t2, t3, t5, t6, t7, t8, t9, t10, t11, t12, t13, t14, t_tof, t15, t16
 with t_home:
     st.markdown(T("""
     <div style="background-color:#1e293b; padding:20px; border-radius:10px; margin-bottom:20px;">
-        <h1 style="color:white; margin:0;">🧲 MagnétoVault Simulator</h1>
+        <h1 style="color:white; margin:0;">🧲 Simulateur MagnétoVault</h1>
         <h3 style="color:#a5b4fc; margin-top:5px;">La "Boîte Blanche" de l'IRM</h3>
         <p style="color:#cbd5e1;"><i>"Ne vous contentez pas de voir l'image. Comprenez la mécanique de sa création."</i></p>
     </div>
