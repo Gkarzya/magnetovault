@@ -648,26 +648,33 @@ v_wm = res["v_wm"]
 v_gm = res["v_gm"]
 v_stroke = res["v_stroke"]
 
-# Calcul final du SNR (utilisant le résultat du moteur)
-snr_val = phy.calculate_snr_relative(mat, nex, turbo, ipat_factor, bw, fov, ep, v_wm, res["ref_wm_signal"])
-snr_val = snr_val * 1.25 
-str_snr = f"{snr_val:.1f} %"
-# Modification pour DWI High-B
-if is_dwi and b_value >= 1000 and show_stroke: v_stroke = 2.0 
-v_fat = phy.calculate_signal(tr_effective, te, ti, cst.T_FAT['T1'], cst.T_FAT['T2'], cst.T_FAT['T2s'], cst.T_FAT['ADC'], cst.T_FAT['PD'], flip_angle, is_gre, is_dwi, 0) if not is_dwi else 0.0
-# --- 3. CALCUL DU SNR (BLOC MANQUANT) ---
+# --- LA LIGNE MANQUANTE ICI ---
+# On récupère v_fat du moteur. S'il n'existe pas dans le dictionnaire, on met 0.0
+v_fat = res.get("v_fat", 0.0)
+
+# --- 3. CALCUL DU SNR (SOLUTION ULTIME STABLE) ---
 snr_tr_ref = float(defaults['tr'])
 snr_te_ref = float(defaults['te'])
 
-# Calcul du signal de référence pour le SNR
+# 1. Signal de référence
 ref_wm_signal = phy.calculate_signal(snr_tr_ref, snr_te_ref, ti, cst.T_WM['T1'], cst.T_WM['T2'], cst.T_WM['T2s'], cst.T_WM['ADC'], cst.T_WM['PD'], 90, False, False, 0)
-
-# Protection contre la division par zéro
 if ref_wm_signal == 0: ref_wm_signal = 0.001 
 
-# Calcul final de la variable snr_val
-snr_val = phy.calculate_snr_relative(mat, nex, turbo, ipat_factor, bw, fov, ep, v_wm, ref_wm_signal)
-snr_val = snr_val * 1.25  # <--- AJOUTE CETTE LIGNE (Correction 4mm = 100%)
+# 2. CALCUL DU SNR DE RÉFÉRENCE POUR 1 COUPE (On fixe n_slices à 1 ici)
+# On crée une variable locale 'snr_pour_une_coupe' en ignorant la variable n_slices du slider
+snr_pour_une_coupe = phy.calculate_snr_relative(mat, nex, turbo, ipat_factor, bw, fov, ep, v_wm, ref_wm_signal)
+
+if is_mprage:
+    # En 3D, le signal s'additionne réellement avec les coupes (partitions)
+    # On multiplie manuellement par la racine du curseur n_slices
+    snr_val = snr_pour_une_coupe * np.sqrt(max(1, n_slices))
+else:
+    # EN 2D, ON FORCE L'AFFICHAGE DU SNR D'UNE SEULE COUPE
+    # Peu importe la valeur du curseur n_slices, le résultat sera le même.
+    snr_val = snr_pour_une_coupe
+
+# 3. Calibration finale
+snr_val = snr_val * 1.25 
 str_snr = f"{snr_val:.1f} %"
 # ==============================================================================
 # GENERATION FANTOME ROBUSTE (VERSION FINALE)
@@ -727,18 +734,24 @@ elif phantom_choice_raw == opt_bottle:
 
 # CAS 3 : CERVEAU (Défaut)
 else:
-    val_lcr = v_lcr if v_lcr > 0 else 1.0 # Sécurité anti-noir
-    val_wm  = v_wm  if v_wm  > 0 else 0.6
-    val_gm  = v_gm  if v_gm  > 0 else 0.8
-    val_fat = v_fat 
-    val_stroke = v_stroke
+    # On vérifie si les variables existent, sinon on met des valeurs de secours
+    # Cela évite le crash si une séquence (comme DWI) ne calcule pas certains tissus
+    val_lcr    = v_lcr if 'v_lcr' in locals() and v_lcr > 0 else 1.0
+    val_wm     = v_wm  if 'v_wm' in locals() and v_wm  > 0 else 0.6
+    val_gm     = v_gm  if 'v_gm' in locals() and v_gm  > 0 else 0.8
+    val_fat    = v_fat if 'v_fat' in locals() else 0.0
+    val_stroke = v_stroke if 'v_stroke' in locals() else 0.0
 
+    # Mode Carte ADC (Diffusion)
     if is_dwi and show_adc_map:
         val_lcr = 1.0; val_wm = 0.3; val_gm = 0.35; val_stroke = 0.15; val_fat = 0.0
 
+    # Application sur le fantôme
     img_water[D < 0.20] = val_lcr
     img_water[(D >= 0.20) & (D < 0.50)] = val_wm
     img_water[(D >= 0.50) & (D < 0.80)] = val_gm
+    
+    # Sécurité pour la graisse (évite d'afficher de la graisse en DWI par exemple)
     img_fat[(D >= 0.80) & (D < 0.95)] = val_fat
 
     if show_stroke: 
