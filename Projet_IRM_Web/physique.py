@@ -58,17 +58,16 @@ def calculate_acquisition_time(tr, mat, nex, turbo, ipat, concats, n_slices, is_
         # Si concats = 2 : On fait 2 fois la séquence (avec un TR plus court géré dans main.py).
         return base_time * concats
 
-def calculate_snr_relative(mat, nex, turbo, ipat, bw, fov, ep, v_wm, ref_wm):
+def calculate_snr_relative(mat, nex, turbo, ipat, bw, fov, ep, v_wm, ref_wm, mode_clinique=True):
     """
-    Estime le SNR relatif.
-    Indépendant du nombre de coupes et des concaténations.
+    Estime le SNR relatif avec un double mode (Clinique vs Physique Pure).
     """
     if ref_wm < 0.0001: ref_wm = 0.0001
     
-    # 1. Facteur Volume Voxel (Taille du pixel * épaisseur)
+    # 1. Facteur Volume Voxel
     vol_factor = (fov/float(mat))**2 * ep
     
-    # 2. Facteur Acquisition (Temps de lecture / moyennage)
+    # 2. Facteur Acquisition
     turbo_penalty = float(turbo)**0.25 
     ipat_penalty = (float(ipat)**0.25) * (1.2 + (0.1 * (ipat - 2))) if ipat > 1 else 1.0
     acq_factor = np.sqrt(float(mat)*float(nex)) / (turbo_penalty * ipat_penalty)
@@ -76,9 +75,14 @@ def calculate_snr_relative(mat, nex, turbo, ipat, bw, fov, ep, v_wm, ref_wm):
     # 3. Facteur Bande Passante
     bw_factor = np.sqrt(220.0 / float(bw))
     
-    # Normalisation
+    # Normalisation Géométrique
     r_vol = vol_factor / ((240.0/256.0)**2 * 5.0)
     r_acq = acq_factor / np.sqrt(256.0)
-    r_sig = v_wm / ref_wm
+    
+    # --- LE BASCULEMENT CLINIQUE / PHYSIQUE ---
+    if mode_clinique:
+        r_sig = 1.0  # Raccourci constructeur : on isole la géométrie du contraste
+    else:
+        r_sig = v_wm / ref_wm # Physique pure : le signal varie avec le TR
     
     return r_vol * r_acq * bw_factor * r_sig * 100.0

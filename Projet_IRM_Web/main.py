@@ -1192,47 +1192,84 @@ def render_safety_tab():
 def render_architecture_tab():
     st.header(T("🏗️ Architecture : Structure et Composants IRM", "🏗️ Architecture: MRI Structure and Components"))
     
+    # --- SÉLECTEUR DE TECHNOLOGIE ET ACTIONS ---
+    c_tech, c_action = st.columns([2, 1])
+    with c_tech:
+        tech_mode = st.radio(
+            T("🔧 Technologie de Refroidissement :", "🔧 Cooling Technology:"),
+            [
+                T("Classique (Bain d'hélium ~1500L, Quench)", "Classic (Helium bath ~1500L, Quench)"),
+                T("Micro-refroidissement (Low-Helium scellé)", "Micro-cooling (Sealed Low-Helium)")
+            ],
+            horizontal=True,
+            key="arch_tech_mode"
+        )
+        
+    is_classic = "Classique" in tech_mode or "Classic" in tech_mode
+    
+    with c_action:
+        st.write("") # Espace d'alignement
+        # Le bouton d'action est maintenant disponible pour les DEUX technologies
+        simuler_coupure = st.toggle(
+            T("⚡ Simuler Coupure / Quench", "⚡ Simulate Power Loss / Quench"), 
+            value=False, 
+            key="arch_vidange_toggle"
+        )
+
+    st.divider()
+
     col_view, col_desc = st.columns([2.5, 1])
     
     with col_desc:
+        options_view = [
+            T("1. Machine (Coque & Tunnel)", "1. Machine (Shell & Bore)"),
+            T("2. Cryostat & Refroidissement", "2. Cryostat & Cooling"),
+            T("3. Aimant B0 (Champ Inhomogène)", "3. B0 Magnet (Inhomogeneous Field)"), 
+            T("4. Shim Passif (Ferromagnétique)", "4. Passive Shim (Ferromagnetic)"), 
+            T("5. Shim Actif (Bobines Orange)", "5. Active Shim (Orange Coils)"), 
+            T("6. GZ (Maxwell - Vert)", "6. GZ (Maxwell - Green)"), 
+            T("7. GY (Golay - Jaune)", "7. GY (Golay - Yellow)"), 
+            T("8. GX (Golay - Bleu)", "8. GX (Golay - Blue)"), 
+            T("9. Antenne RF (Body Coil - Rouge)", "9. RF Coil (Body Coil - Red)"),
+            T("10. Tout visualiser", "10. Show All")
+        ]
+        
         view_mode = st.radio(
             T("Progression pédagogique :", "Pedagogical progression:"),
-            [
-                T("1. Machine (Coque & Tunnel)", "1. Machine (Shell & Bore)"),
-                T("2. Cryostat (Cylindre Hélium)", "2. Cryostat (Helium Cylinder)"),
-                "3. Aimant (B0 & Supra)", 
-                "4. Bobines de Shim (Orange)", 
-                "5. GZ (Maxwell - Vert)", 
-                "6. GY (Golay - Jaune)", 
-                "7. GX (Golay - Bleu)", 
-                T("8. Tout visualiser", "8. Show All")
-            ],
+            options_view,
             index=0, key="arch_final_clean"
         )
         
         st.divider()
-        st.write(T("🔬 **Analyse** : Visualisation des couches internes de l'aimant.", 
-                   "🔬 **Analysis**: Visualizing the magnet's internal layers."))
+        if simuler_coupure:
+            if is_classic:
+                st.error(T("🚨 **QUENCH !**\nLa tête froide s'arrête. L'hélium bout massivement, s'échappe par la cheminée, et l'aimantation B0 s'effondre.", 
+                           "🚨 **QUENCH!**\nThe cold head stops. Helium boils massively, escapes through the chimney, and B0 magnetization drops."))
+            else:
+                st.error(T("🚨 **Coupure Électrique !**\nLa tête froide s'arrête. L'hélium est évacué vers la cuve et l'aimantation B0 disparaît.", 
+                           "🚨 **Power Outage!**\nThe cold head stops. Helium is evacuated into the tank and B0 magnetization drops."))
+        else:
+            st.write(T("🔬 **Analyse** : Visualisation des couches internes de l'aimant.", 
+                       "🔬 **Analysis**: Visualizing the magnet's internal layers."))
 
     with col_view:
         fig = plt.figure(figsize=(10, 8))
         ax = fig.add_subplot(111, projection='3d')
         ax.set_facecolor('black'); fig.patch.set_facecolor('black')
 
-        mode_idx = ["1", "2", "3", "4", "5", "6", "7", "8"].index(view_mode[0])
-        show_all = (mode_idx == 7)
+        mode_idx = options_view.index(view_mode)
+        show_all = (mode_idx == 9) # 10ème élément
 
         def get_poids(target_idx):
             if show_all:
-                if target_idx >= 4: return 1.0  # Gradients à 100%
-                return 0.3                      # Reste à 30%
+                if target_idx >= 5: return 1.0  
+                return 0.3                      
             if target_idx == mode_idx: return 1.0
-            if target_idx == 1 and mode_idx == 2: return 0.6 # Cryo pendant B0
+            if target_idx == 1 and mode_idx == 2: return 0.6 
             if target_idx < mode_idx: return 0.25
             return 0.0
 
         def draw_perfect_edges(r, l, alpha):
-            """Rétablit les arêtes XYZ de la coque"""
             for y in [-r, r]:
                 for z in [-r, r]:
                     ax.plot([-l, l], [y, y], [z, z], color='white', lw=1.5, alpha=alpha)
@@ -1242,7 +1279,6 @@ def render_architecture_tab():
                     ax.plot([x, x], [side, side], [-r, r], color='white', lw=1, alpha=alpha*0.6)
 
         def draw_bipolar_ramp(color, mode, alpha):
-            """Rampes visibles uniquement en mode individuel"""
             if not show_all:
                 pts = np.linspace(-1.1, 1.1, 40)
                 for p in pts:
@@ -1272,49 +1308,197 @@ def render_architecture_tab():
             Z_t, T_t = np.meshgrid(z_t, t_t)
             ax.plot_surface(Z_t, 0.85*np.cos(T_t), 0.85*np.sin(T_t), color='white', alpha=a_tun)
 
-        # --- 2. CRYOSTAT (CYLINDRE) ---
+        # --- 2. CRYOSTAT, TÊTE FROIDE ET QUENCH / MICRO-REFROIDISSEMENT ---
         p_c = get_poids(1)
         if p_c > 0:
-            z_c = np.linspace(-2.0, 2.0, 40); t_c_s = np.linspace(0, 2*np.pi, 40)
-            if show_all: t_c_s = np.linspace(np.pi/2, 2*np.pi, 40)
-            Z_c, T_c = np.meshgrid(z_c, t_c_s)
-            ax.plot_surface(Z_c, 1.75*np.cos(T_c), 1.75*np.sin(T_c), color='#00d2ff', alpha=p_c*0.2)
+            if is_classic:
+                # Modèle Classique : Cylindre du cryostat principal
+                z_c = np.linspace(-2.0, 2.0, 40); t_c_s = np.linspace(0, 2*np.pi, 40)
+                if show_all: t_c_s = np.linspace(np.pi/2, 2*np.pi, 40)
+                Z_c, T_c = np.meshgrid(z_c, t_c_s)
+                
+                # Le cryostat se vide si Quench
+                color_cryo = '#7f8c8d' if simuler_coupure else '#00d2ff'
+                alpha_cryo = p_c * 0.05 if simuler_coupure else p_c * 0.2
+                ax.plot_surface(Z_c, 1.75*np.cos(T_c), 1.75*np.sin(T_c), color=color_cryo, alpha=alpha_cryo)
+                
+                # Tube de Quench (Avant du cube)
+                z_q = np.linspace(1.8, 3.8, 10) 
+                theta_q = np.linspace(0, 2*np.pi, 20)
+                Z_q, T_q = np.meshgrid(z_q, theta_q)
+                X_q = 0.8 + 0.4 * np.cos(T_q)
+                Y_q = 0.0 + 0.4 * np.sin(T_q)
+                
+                # S'illumine en bleu si Quench
+                color_quench = '#00d2ff' if simuler_coupure else '#bdc3c7'
+                alpha_quench = p_c * 0.9 if simuler_coupure else p_c * 0.8
+                ax.plot_surface(X_q, Y_q, Z_q, color=color_quench, alpha=alpha_quench)
 
-        # --- 3. AIMANT SUPRA (B0) ---
-        p_s = get_poids(2)
-        if p_s > 0:
+                # Nuage d'hélium qui s'échappe si Quench (En BLANC)
+                if simuler_coupure:
+                    z_flux = np.linspace(3.8, 5.5, 15)
+                    Z_f, T_f = np.meshgrid(z_flux, theta_q)
+                    R_f = 0.4 + 0.3 * (Z_f - 3.8) # Le nuage s'élargit
+                    X_f = 0.8 + R_f * np.cos(T_f)
+                    Y_f = 0.0 + R_f * np.sin(T_f)
+                    # Modification ici : Cône blanc pour symboliser le gel de l'air
+                    ax.plot_surface(X_f, Y_f, Z_f, color='white', alpha=p_c*0.7)
+            
+            else:
+                # Modèle Low-Helium (Micro-refroidissement scellé)
+                z_serp = np.linspace(-1.8, 1.8, 400)
+                y_serp = 1.68 * np.cos(10 * np.pi * z_serp) 
+                z_vert_serp = 1.68 * np.sin(10 * np.pi * z_serp)
+                
+                color_serp = '#7f8c8d' if simuler_coupure else '#00d2ff'
+                alpha_serp = p_c * 0.15 if simuler_coupure else p_c * 0.8
+                ax.plot(z_serp, y_serp, z_vert_serp, color=color_serp, alpha=alpha_serp, lw=1.2)
+                
+                x_cv = np.linspace(-1.8, -1.2, 10) 
+                theta_cv = np.linspace(0, 2*np.pi, 20)
+                X_cv, T_cv = np.meshgrid(x_cv, theta_cv)
+                Y_cv = -1.2 + 0.25 * np.cos(T_cv) 
+                Z_cv = -1.8 + 0.25 * np.sin(T_cv) 
+                
+                color_cuve = '#00d2ff' if simuler_coupure else '#2c3e50'
+                alpha_cuve = p_c * 0.9 if simuler_coupure else p_c * 0.3
+                
+                ax.plot_surface(X_cv, Y_cv, Z_cv, color=color_cuve, alpha=alpha_cuve)
+                ax.plot_wireframe(X_cv, Y_cv, Z_cv, color='#95a5a6', alpha=p_c*0.5, rstride=5, cstride=5)
+                ax.plot([-1.5, -1.5], [-1.2, 0], [-1.55, -1.68], color='#bdc3c7', lw=3, alpha=p_c)
+
+            # --- Tête froide (COMMUNE AUX DEUX SYSTÈMES) ---
+            z_ch = np.linspace(1.8, 2.2, 10) 
+            theta_ch = np.linspace(0, 2*np.pi, 20)
+            Z_ch, T_ch = np.meshgrid(z_ch, theta_ch)
+            X_ch = -1.0 + 0.25 * np.cos(T_ch)
+            Y_ch = 0.0 + 0.25 * np.sin(T_ch)
+            
+            # Éteinte (grise) pour les DEUX modèles lors de la simulation de coupure
+            color_head = '#7f8c8d' if simuler_coupure else '#e67e22'
+            ax.plot_surface(X_ch, Y_ch, Z_ch, color=color_head, alpha=p_c*0.9)
+
+        # --- 3. AIMANT SUPRA (B0) ET LIGNES DE CHAMP ---
+        
+        # On force l'opacité à 1.0 (100%) pour les étapes 2 (B0), 3 (Shim Passif) et 4 (Shim Actif)
+        if mode_idx in [2, 3, 4]:
+            p_b0 = 1.0
+        else:
+            # Pour les étapes suivantes (Gradients GZ et +, ou Tout visualiser), on reprend l'estompage normal
+            p_b0 = get_poids(2) 
+            
+        if p_b0 > 0:
+            # 1. BOBINAGE MOINS DENSE (Espaces entre les fibres)
+            # On utilise une fréquence de 25 (au lieu de 40 ou 120) pour bien séparer les spires
+            # Et une épaisseur de trait (lw) à 2.0 pour faire "câble épais"
             z_h = np.linspace(-1.9, 1.9, 800)
-            ax.plot(z_h, 1.6*np.cos(40*np.pi*z_h), 1.6*np.sin(40*np.pi*z_h), color='#8e44ad', alpha=p_s, lw=1.5)
-            ax.quiver(-2.4, 0, 0, 4.8, 0, 0, color='white', lw=1.5, alpha=p_s, arrow_length_ratio=0.06)
-            ax.text(2.2, 0, 0.3, "B0", color='white', fontsize=12, weight='bold', alpha=p_s)
+            ax.plot(z_h, 1.6*np.cos(25*np.pi*z_h), 1.6*np.sin(25*np.pi*z_h), color='#8e44ad', alpha=p_b0, lw=2.0)
+            
+            # --- ANIMATION B0 ET LIGNES DE CHAMP ---
+            if not simuler_coupure:
+                
+                # LE VECTEUR B0 PRINCIPAL (Grosse flèche centrale)
+                # L'opacité utilise p_b0 pour rester brillante aux étapes du Shim
+                ax.quiver(-2.4, 0, 0, 4.8, 0, 0, color='#00d2ff', lw=6, alpha=p_b0, arrow_length_ratio=0.06)
+                ax.text(2.6, 0, 0, "B0", color='#00d2ff', fontsize=18, weight='bold', ha='center', va='center', alpha=p_b0)
 
-        # --- 4. SHIM (ORANGE) ---
-        p_sh = get_poids(3)
+                # LES 3 LIGNES DE CHAMP (Blanches, Intenses, Distordues)
+                z_l = np.linspace(-2.4, 2.4, 150)
+                offsets = [-0.8, 0, 0.8]  
+                
+                for off in offsets:
+                    if mode_idx <= 2: 
+                        # B0 brut : Grosses distorsions
+                        dev = 0.35 * np.sin(3 * z_l) + 0.15 * np.cos(5 * z_l)
+                    elif mode_idx == 3: 
+                        # Shim Passif : Petites vagues
+                        dev = 0.08 * np.sin(3 * z_l)
+                    else: 
+                        # Shim Actif et suite : Lignes parfaitement droites
+                        dev = np.zeros_like(z_l)
+                    
+                    # Tracé des lignes avec l'opacité p_b0 (multipliée par 0.9 pour éviter de saturer le blanc)
+                    ax.plot(z_l, off + dev, np.zeros_like(z_l), color='white', lw=3, alpha=p_b0*0.9)
+                    ax.quiver(0, off, 0, 0.4, 0, 0, color='white', lw=2, alpha=p_b0*0.9, arrow_length_ratio=0.3)
+
+        # --- 4. SHIM PASSIF (PLAQUES DE FER) ---
+        p_passif = get_poids(3)
+        if p_passif > 0:
+            # Réduction drastique des plaques pour dégager la vue visuellement
+            theta_plates = np.linspace(0, 2*np.pi, 6, endpoint=False) # 6 plaques par anneau (au lieu de 12)
+            z_plates = [-1.0, 0.0, 1.0] # 3 anneaux espacés (au lieu de 5)
+            
+            for z_p in z_plates:
+                for t_p in theta_plates:
+                    x_p = 1.48 * np.cos(t_p)
+                    y_p = 1.48 * np.sin(t_p)
+                    # Pastilles grises métalliques
+                    ax.scatter(z_p, x_p, y_p, color='#bdc3c7', s=50, marker='s', alpha=p_passif)
+
+        # --- 5. SHIM ACTIF (ORANGE) ---
+        p_sh = get_poids(4)
         t_circ = np.linspace(0, 2*np.pi, 100)
         if p_sh > 0:
             for z_p in [-1.8, 1.8]:
                 ax.plot([z_p]*100, 1.45*np.cos(t_circ), 1.45*np.sin(t_circ), color='orange', lw=6, alpha=p_sh)
 
-        # --- 5, 6, 7. GRADIENTS ---
-        # GZ
-        p_gz = get_poids(4)
+        # --- 5. SHIM ACTIF (ORANGE) ---
+        p_sh = get_poids(4)
+        t_circ = np.linspace(0, 2*np.pi, 100)
+        if p_sh > 0:
+            for z_p in [-1.8, 1.8]:
+                ax.plot([z_p]*100, 1.45*np.cos(t_circ), 1.45*np.sin(t_circ), color='orange', lw=6, alpha=p_sh)
+
+        # --- 6. GRADIENT Z (VERT) ---
+        p_gz = get_poids(5)
         if p_gz > 0:
             ax.plot([0.8]*100, np.cos(t_circ), np.sin(t_circ), color='#27ae60', lw=7, alpha=p_gz)
             ax.plot([-0.8]*100, np.cos(t_circ), np.sin(t_circ), color='#27ae60', lw=7, alpha=p_gz)
-            if mode_idx == 4: draw_bipolar_ramp('#27ae60', "GZ", 1.0)
-        # GY
-        p_gy = get_poids(5)
+            # L'index 5 correspond maintenant au GZ dans le menu
+            if mode_idx == 5: 
+                draw_bipolar_ramp('#27ae60', "GZ", 1.0)
+            
+        # --- 7. GRADIENT Y (JAUNE) ---
+        p_gy = get_poids(6)
         if p_gy > 0:
             for z in [[0.1, 0.75], [-0.75, -0.1]]:
-                for t in [[65, 115], [245, 295]]: draw_coil(z, t, '#f1c40f', p_gy)
-            if mode_idx == 5: draw_bipolar_ramp('#f1c40f', "GY", 1.0)
-        # GX
-        p_gx = get_poids(6)
+                for t in [[65, 115], [245, 295]]: 
+                    draw_coil(z, t, '#f1c40f', p_gy)
+            # L'index 6 correspond maintenant au GY dans le menu
+            if mode_idx == 6: 
+                draw_bipolar_ramp('#f1c40f', "GY", 1.0)
+            
+        # --- 8. GRADIENT X (BLEU) ---
+        p_gx = get_poids(7)
         if p_gx > 0:
             for z in [[0.1, 0.75], [-0.75, -0.1]]:
-                for t in [[-25, 25], [155, 205]]: draw_coil(z, t, '#2980b9', p_gx)
-            if mode_idx == 6: draw_bipolar_ramp('#2980b9', "GX", 1.0)
+                for t in [[-25, 25], [155, 205]]: 
+                    draw_coil(z, t, '#2980b9', p_gx)
+            # L'index 7 correspond maintenant au GX dans le menu
+            if mode_idx == 7: 
+                draw_bipolar_ramp('#2980b9', "GX", 1.0)
 
+        # --- 9. ANTENNE RF (BODY COIL - ROUGE) ---
+        p_rf = get_poids(8)
+        if p_rf > 0:
+            r_rf = 0.75  # Rayon juste à l'intérieur des gradients et de la coque
+            z_rf_ends = [-1.0, 1.0] # Longueur de l'antenne
+            color_rf = '#ff0000' # Rouge Vif
+            
+            # Les 2 anneaux (End-rings)
+            for z_ring in z_rf_ends:
+                ax.plot([z_ring]*100, r_rf*np.cos(t_circ), r_rf*np.sin(t_circ), color=color_rf, lw=4, alpha=p_rf)
+            
+            # Les 16 barreaux (Rungs)
+            num_rungs = 16
+            for i in range(num_rungs):
+                angle = i * (2 * np.pi / num_rungs)
+                ax.plot(z_rf_ends, [r_rf*np.cos(angle)]*2, [r_rf*np.sin(angle)]*2, color=color_rf, lw=2, alpha=p_rf)
+            
+            if mode_idx == 8:
+                ax.text(0, 0, 1.0, "Body Coil (B1)", color=color_rf, fontsize=14, weight='bold', ha='center', alpha=p_rf)
+
+        # Application de la vue finale
         ax.view_init(elev=22, azim=-125)
         ax.set_axis_off()
         st.pyplot(fig)
@@ -1323,37 +1507,85 @@ def render_architecture_tab():
     st.divider()
     cols = st.columns(3)
     with cols[0]:
-        st.subheader("🧊 Cryogénie & B0")
-        st.write("**Coque & Tunnel** : Structure mécanique et accueil du patient.")
-        st.write("**Cryostat** : Enceinte thermique isolant l'hélium liquide (-269°C).")
-        st.write("**Aimant Supra** : Bobinage principal générant le champ statique stable $B_0$.")
+        st.subheader(T("🧊 Cryogénie & B0", "🧊 Cryogenics & B0"))
+        st.write(T("**Coque & Tunnel** : Structure mécanique et accueil du patient.", "**Shell & Bore** : Mechanical structure and patient accommodation."))
+        
+        if is_classic:
+            if simuler_coupure:
+                st.write(T("⚠️ **Quench !** : L'hélium bout violemment (1L liquide = 700L gaz) et s'échappe par la cheminée en gelant l'humidité de l'air. Le cryostat se vide de ses 1500L.", 
+                           "⚠️ **Quench!** : Helium boils violently (1L liquid = 700L gas) and escapes through the chimney, freezing air moisture. The cryostat empties its 1500L."))
+            else:
+                st.write(T("**Cryostat (Bain)** : Enceinte thermique remplie de ~1500L d'hélium liquide (-269°C).", "**Cryostat (Bath)** : Thermal enclosure filled with ~1500L of liquid helium (-269°C)."))
+                st.write(T("**Tête Froide** : Compresseur re-condensant l'hélium gazeux pour éviter son évaporation.", "**Cold Head** : Compressor re-condensing gaseous helium to prevent evaporation."))
+                st.write(T("**Tube de Quench** : Cheminée de sécurité pour évacuer le gaz vers l'extérieur en cas d'urgence.", "**Quench Pipe** : Safety chimney to vent gas outside in an emergency."))
+        else:
+            st.write(T("**Micro-refroidissement** : Fini le grand bain ! Un fin serpentin d'hélium liquide (0.7L) refroidit directement l'aimant.", "**Micro-cooling** : No more large bath! A thin coil of liquid helium (0.7L) directly cools the magnet."))
+            st.write(T("**Tête Froide** : Compresseur indispensable pour refroidir et re-condenser l'hélium dans le circuit scellé. Sans elle, la pression augmente.", "**Cold Head** : Compressor essential to cool and re-condense helium in the sealed circuit. Without it, pressure rises."))
+            if simuler_coupure:
+                st.write(T("⚠️ **Vidange Sécurisée** : L'hélium s'étend et est transféré dans la cuve de secours. Zéro perte d'hélium !", 
+                           "⚠️ **Secure Drain** : Helium expands and is transferred to the backup tank. Zero helium loss!"))
+            else:
+                st.write(T("**Cuve de Rétention** : En cas de coupure (Tête froide HS), l'hélium est transféré dans cette cuve de secours.", "**Retention Tank** : In case of power loss (Cold head down), helium is transferred to this backup tank."))
+
+        if simuler_coupure:
+            st.write(T("❌ **Aimant Supra** : Le réchauffement entraîne la perte immédiate de la supraconductivité et du champ B0.", "❌ **Superconducting Magnet** : Heating leads to immediate loss of superconductivity and B0 field."))
+        else:
+            st.write(T("**Aimant Supra** : Bobinage principal générant le champ statique B0.", "**Superconducting Magnet** : Main coil generating the static B0 field."))
+        
     with cols[1]:
-        st.subheader("🎯 Homogénéité (Shim)")
-        st.write("**Bobines de Shim** : Compensent les inhomogénéités locales du champ magnétique.")
-        st.write("**Impact** : Essentiel pour obtenir une résonance précise sur l'ensemble de la zone imagée.")
+        st.subheader(T("🎯 Homogénéité (Shim)", "🎯 Homogeneity (Shim)"))
+        st.write(T("**Shim Passif** : Petites plaques de métal (Fer) disposées dans la machine lors de l'installation pour gommer les gros défauts du champ B0.", "**Passive Shim** : Small metal plates (Iron) placed inside the scanner during installation to erase major B0 defects."))
+        st.write(T("**Shim Actif (Orange)** : Bobines électriques ajustables qui compensent les inhomogénéités fines et variables (ex: forme du patient).", "**Active Shim (Orange)** : Adjustable electric coils that compensate for fine and variable inhomogeneities (e.g. patient shape)."))
     with cols[2]:
-        st.subheader("📡 Codage Spatial")
-        st.write("**GZ (Vert)** : Maxwell coils. Sélection de la coupe transversale.")
-        st.write("**GY/GX (Jaune/Bleu)** : Golay coils. Codage de phase et de fréquence.")
-        st.write("**Rampes +/-** : Illustrent la variation linéaire de champ induite par les gradients.")
+        st.subheader(T("📡 Codage Spatial", "📡 Spatial Encoding"))
+        st.write(T("**GZ (Vert)** : Bobines de Maxwell. Sélection de la coupe transversale.", "**GZ (Green)** : Maxwell coils. Cross-sectional slice selection."))
+        st.write(T("**GY/GX (Jaune/Bleu)** : Bobines de Golay. Codage de phase et de fréquence.", "**GY/GX (Yellow/Blue)** : Golay coils. Phase and frequency encoding."))
+        st.write(T("**Rampes +/-** : Illustrent la variation linéaire de champ induite par les gradients.", "**+/- Ramps** : Illustrate the linear field variation induced by the gradients."))
 # --- 13. AFFICHAGE FINAL / FINAL DISPLAY ---
 st.title(T("Simulateur MagnétoVault", "MagnetoVault Simulator"))
 
-# DÉFINITION DES ONGLETS / TABS DEFINITION
-t_home, t1, t2, t3, t5, t6, t7, t8, t9, t10, t11, t12, t13, t14, t_tof, t15, t16, t17 = st.tabs([
-    T("🏠 Accueil", "🏠 Home"), T("Fantôme", "Phantom"), T("🌀 Espace K & Codage", "🌀 K-Space & Encoding"), 
-    T("Signaux", "Signals"), T("🧠 Anatomie", "🧠 Anatomy"), T("📈 Physique", "📈 Physics"), 
-    T("⚡ Chronogramme", "⚡ Timing Diagram"), T("☣️ Artefacts", "☣️ Artifacts"), 
-    T("🚀 Imagerie Parallèle", "🚀 Parallel Imaging"), T("🧬 Diffusion", "🧬 Diffusion"), 
-    T("🎓 Cours", "🎓 Course"), T("🩸 SWI & Dipôle", "🩸 SWI & Dipole"), 
-    T("3D T1 (MP-RAGE)", "3D T1 (MP-RAGE)"), T("ASL (Perfusion)", "ASL (Perfusion)"), 
-    T("🩸 Angio TOF", "🩸 Angio TOF"), T("🍔 Fat Sat", "🍔 Fat Sat"),
+# LISTE DES MODULES POUR LE MENU DE NAVIGATION
+# 1. LISTE DES MODULES (AVEC TOUTES LES ICÔNES DÉFINITIVES)
+liste_modules = [
+    T("🏠 Accueil", "🏠 Home"), 
+    T("👻 Fantôme", "👻 Phantom"), 
+    T("🌀 Espace K & Codage", "🌀 K-Space & Encoding"), 
+    T("📊 Signaux", "📊 Signals"), 
+    T("🧠 Anatomie", "🧠 Anatomy"), 
+    T("📈 Physique", "📈 Physics"), 
+    T("⚡ Chronogramme", "⚡ Timing Diagram"), 
+    T("☣️ Artefacts", "☣️ Artifacts"), 
+    T("🚀 Imagerie Parallèle", "🚀 Parallel Imaging"), 
+    T("🧬 Diffusion", "🧬 Diffusion"), 
+    T("🎓 Cours", "🎓 Course"), 
+    T("🩸 SWI & Dipôle", "🩸 SWI & Dipole"), 
+    T("🧊 3D T1 (MP-RAGE)", "🧊 3D T1 (MP-RAGE)"), 
+    T("🏷️ ASL (Perfusion)", "🏷️ ASL (Perfusion)"), 
+    T("🩸 Angio TOF", "🩸 Angio TOF"), 
+    T("🍔 Fat Sat", "🍔 Fat Sat"),
     T("🔥 Sécurité (SAR/B1+RMS)", "🔥 Safety (SAR/B1+RMS)"),
-    T("🏗️ Architecture", "🏗️ Architecture") # <--- Nouvel onglet
-])
+    T("🏗️ Architecture", "🏗️ Architecture")
+]
 
+# 2. MÉMOIRE BLINDÉE DE LA POSITION
+if 'nav_index' not in st.session_state:
+    st.session_state.nav_index = 0
+
+def update_nav():
+    """Sauvegarde la position choisie dans la mémoire persistante."""
+    st.session_state.nav_index = liste_modules.index(st.session_state.nav_widget)
+
+# 3. MENU DÉROULANT
+module_actif = st.selectbox(
+    T("🧭 Navigation", "🧭 Navigation"), 
+    options=liste_modules, 
+    index=st.session_state.nav_index,
+    key="nav_widget",
+    on_change=update_nav
+)
+st.markdown("---")
 # [TAB 0 : ACCUEIL / HOME]
-with t_home:
+if module_actif == liste_modules[0]:
     st.markdown(T("""
     <div style="background-color:#1e293b; padding:20px; border-radius:10px; margin-bottom:20px;">
         <h1 style="color:white; margin:0;">🧲 Simulateur MagnétoVault</h1>
@@ -1543,7 +1775,7 @@ with t_home:
             """))
 
 # [TAB 1 : FANTOME / PHANTOM]
-with t1:
+elif module_actif == liste_modules[1]:
     # =========================================================
     # 1. SETUP & PARAMÈTRES
     # =========================================================
@@ -1624,12 +1856,9 @@ with t1:
     f_bw = np.sqrt(ref_bw / float(bw))
     f_nex = np.sqrt(nex / ref_nex)
     f_turbo = 1.0 / (turbo ** 0.15)
-    f_sig = (v_wm / ref_sig) if ref_sig > 0 else 0
     
     # 3. iPAT (CORRECTION MAJEURE : FACTEUR G)
     # Formule SNR iPAT = SNR / (g * sqrt(R))
-    # On simule un facteur g qui augmente avec l'accélération
-    # R=2 -> g=1.2 | R=3 -> g=1.5 | R=4 -> g=2.0
     if ipat_factor > 1:
         # Simulation empirique du facteur g
         g_factor = 1.0 + (0.3 * (ipat_factor - 1))
@@ -1638,24 +1867,37 @@ with t1:
         g_factor = 1.0
         f_ipat = 1.0
 
-    # ... (Calculs précédents de f_vox, f_bw, f_nex...) ...
+    # --- NOUVEAU : BASCULE MODE CLINIQUE / PHYSIQUE ---
+    mode_clinique_actif = st.toggle(
+        T("🏥 Mode Console Clinique", "🏥 Clinical Console Mode"), 
+        value=True, 
+        help=T("Désactivez pour voir l'impact physique réel du TR (lié au nb de coupes/concats) sur le SNR.", 
+               "Disable to see the true physical impact of TR (from slices/concats) on SNR.")
+    )
 
+    # 4. Signal Tissulaire (Impact du TR)
+    if mode_clinique_actif:
+        f_sig = 1.0  # Raccourci clinique : la machine fige l'impact du TR sur le SNR
+    else:
+        f_sig = (v_wm / ref_sig) if ref_sig > 0 else 0  # Physique pure : le signal varie
+    
     # --- CALCUL DU SNR ---
     if is_dwi:
         # 1. Base 100% pour la matrice 128
-        # On ignore les facteurs standards (f_vox, f_bw) pour cette séquence
         snr_base = 100.0 
         
         # 2. On ajuste si l'utilisateur change la matrice manuellement
-        # Si Matrix=64 (SNR augmente), si Matrix=256 (SNR diminue)
         facteur_matrice = (128 / mat) ** 2
         
         # 3. Application de l'atténuation physique du b-value
-        # À b=0 -> 100%, à b=1000 -> décroissance exponentielle
         snr_final = snr_base * facteur_matrice * np.exp(-b_value * 0.001)
     else:
         # Formule standard pour toutes les autres séquences (T1, T2, FLAIR...)
         snr_final = 100.0 * f_vox * f_bw * f_nex * f_turbo * f_sig * f_ipat
+        
+        # Ajout du volume 3D : on augmente le SNR avec les coupes UNIQUEMENT en MP-RAGE
+        if is_mprage:
+            snr_final = snr_final * np.sqrt(max(1, n_slices))
 
     # Affichage final
     str_snr = f"{snr_final:.1f} %"
@@ -1822,11 +2064,54 @@ with t1:
             ax_p.text(128, 240, "GRAISSE", color='orange', ha='center', va='center', fontweight='bold')
 
         st.pyplot(fig_p, use_container_width=False)
+# =========================================================
+    # 7. EXPLICATION PÉDAGOGIQUE DU MODE PHYSIQUE PURE
+    # =========================================================
+    if not mode_clinique_actif:
+        st.divider()
+        st.markdown(T(
+            "<h3 style='color: #8e44ad; border-bottom: 2px solid #8e44ad; padding-bottom: 5px;'>🔬 Mode Physique Pure : Les Équations de Bloch en Action</h3>", 
+            "<h3 style='color: #8e44ad; border-bottom: 2px solid #8e44ad; padding-bottom: 5px;'>🔬 Pure Physics Mode: Bloch Equations in Action</h3>"
+        ), unsafe_allow_html=True)
+        
+        c_bloch1, c_bloch2 = st.columns([1.2, 1])
+        with c_bloch1:
+            st.info(T(
+                "**Pourquoi le SNR varie-t-il avec les coupes et les concaténations ?**\n\n"
+                "Dans la réalité physique, le signal dépend intimement du temps laissé aux protons pour repousser selon l'axe longitudinal (Repousse T1). "
+                "C'est ce que décrit l'équation de Bloch :\n\n"
+                "• 📈 **Plus de coupes :** La machine est obligée d'allonger le Temps de Répétition (TR) pour avoir le temps d'acquérir chaque coupe. "
+                "Un TR plus long laisse l'aimantation $M_z$ remonter plus haut. Le signal brut explose, et le SNR avec.\n\n"
+                "• 📉 **Plus de concaténations :** La machine divise l'acquisition en plusieurs paquets, ce qui lui permet de relâcher la contrainte sur le TR "
+                "(le TR redevient court). L'aimantation n'a pas le temps de repousser, le signal s'effondre.",
+                
+                "**Why does SNR vary with slices and concatenations?**\n\n"
+                "In physical reality, the signal depends intimately on the time given to protons to recover along the longitudinal axis (T1 Recovery). "
+                "This is described by the Bloch equations:\n\n"
+                "• 📈 **More slices:** The machine is forced to extend the Repetition Time (TR) to have time to acquire each slice. "
+                "A longer TR allows the magnetization $M_z$ to recover higher. The raw signal explodes, and the SNR with it.\n\n"
+                "• 📉 **More concatenations:** The machine divides the acquisition into several packages, easing the constraint on the TR "
+                "(TR becomes short again). Magnetization doesn't have time to recover, the signal collapses."
+            ))
+            
+        with c_bloch2:
+            st.markdown(T("#### Les Mathématiques du Signal", "#### The Mathematics of Signal"))
+            
+            st.markdown(T("**1. Repousse Longitudinale (Contraste T1) :**", "**1. Longitudinal Recovery (T1 Contrast):**"))
+            st.latex(r"M_z(TR) = M_0 \left(1 - e^{-\frac{TR}{T_1}}\right)")
+            
+            st.markdown(T("**2. Décroissance Transversale (Contraste T2) :**", "**2. Transverse Decay (T2 Contrast):**"))
+            st.latex(r"M_{xy}(TE) = M_z \cdot e^{-\frac{TE}{T_2}}")
+            
+            st.caption(T(
+                "💡 *Note : Sur une vraie console clinique, le calculateur de SNR fige arbitrairement l'impact du TR (Mode Clinique) pour ne pas vous induire en erreur sur la qualité visuelle finale de l'image.*",
+                "💡 *Note: On a real clinical console, the SNR calculator arbitrarily freezes the impact of TR (Clinical Mode) so as not to mislead you about the final visual quality of the image.*"
+            ))
 
 # ==============================================================================
 # [TAB 2 : ESPACE K - TERMINOLOGIE CORRIGÉE]
 # ==============================================================================
-with t2:
+elif module_actif == liste_modules[2]:
     # 1. TITRE PRINCIPAL
     st.markdown(T("""
     <div style="background-color: #1e293b; padding: 20px; border-radius: 10px; margin-bottom: 25px; text-align: center; border-bottom: 4px solid #3b82f6;">
@@ -2029,7 +2314,7 @@ with t2:
             st.image(img_rec, clamp=True, width=300, caption=T("Reconstruction", "Reconstruction"))
 
 # [TAB 3 : SIGNAUX]
-with t3:
+elif module_actif == liste_modules[3]:
     st.markdown(T("### 📊 Comparaison des Signaux", "### 📊 Signal Comparison"))
     
     # Centrage du graphique
@@ -2054,7 +2339,7 @@ with t3:
         st.pyplot(fig_sig); plt.close(fig_sig)
 
 # [TAB 5 : ANATOMIE] - RÉINITIALISÉ ET MODIFIÉ
-with t5:
+elif module_actif == liste_modules[4]:
     st.header(T("Exploration Anatomique (Physique Avancée)", "Anatomical Exploration (Advanced Physics)"))
     
     if HAS_NILEARN and processor.ready:
@@ -2144,7 +2429,7 @@ with t5:
     else: 
         st.warning(T("Module 'nilearn' manquant.", "'nilearn' module missing."))
 # [TAB 6 : PHYSIQUE]
-with t6:
+elif module_actif == liste_modules[5]:
     st.header(T("📈 Physique", "📈 Physics"))
     
     # Définition des tissus et couleurs
@@ -2249,7 +2534,7 @@ with t6:
     plt.close(fig_t2)
 
 # [TAB 7 : CHRONOGRAMME]
-with t7:
+elif module_actif == liste_modules[6]:
     st.header(T("⚡ Chronogramme", "⚡ Timing Diagram"))
     t_90 = 10
     
@@ -2333,7 +2618,7 @@ with t7:
         axs[4].plot(t, sig, color='navy', linewidth=1.5); axs[4].set_ylabel("Signal")
         st.pyplot(fig); plt.close(fig)
 
-with t8:
+elif module_actif == liste_modules[7]:
     st.header(T("☣️ Laboratoire d'Artefacts", "☣️ Artifact Laboratory"))
     
     col_ctrl, col_visu = st.columns([1, 2])
@@ -2493,7 +2778,7 @@ with t8:
             ax_z.axis('off')
             st.pyplot(fig_z)
 
-with t9:
+elif module_actif == liste_modules[8]:
     st.header(T("🚀 Imagerie Parallèle (PI)", "🚀 Parallel Imaging (PI)"))
     
     # --- 0. BOUTON CACHE ET METAPHORE ---
@@ -2764,7 +3049,7 @@ with t9:
             use_container_width=True
         )
 
-with t10:
+elif module_actif == liste_modules[9]:
     st.header(T("🧬 Théorie de la Diffusion (DWI)", "🧬 Diffusion Theory (DWI)"))
     st.markdown(T(
         "L'imagerie de diffusion est unique car elle sonde le **mouvement microscopique** des molécules d'eau.",
@@ -2945,7 +3230,7 @@ with t10:
         * *Useful for grading complex tumors.*
         """))
 
-with t11:
+elif module_actif == liste_modules[10]:
     st.header(T("🎓 Cours Théorique", "🎓 Theoretical Course"))
 
     # --- DONNÉES DU COURS (STRUCTURE BILINGUE) ---
@@ -3034,7 +3319,7 @@ with t11:
     plt.close(fig_ppt)
 
 # [TAB 12 : SWI & DIPOLE]
-with t12:
+elif module_actif == liste_modules[11]:
     st.header(T("🩸 Imagerie de Susceptibilité Magnétique (SWI)", "🩸 Susceptibility Weighted Imaging (SWI)"))
     
     # Onglets internes traduits
@@ -3212,7 +3497,7 @@ with t12:
             st.info(T("Module Anatomique non chargé. Utilisez le Fantôme Dipôle (Onglet 2) pour la démonstration.", 
                       "Anatomy Module not loaded. Use Dipole Phantom (Tab 2) for demo."))
 
-with t13:
+elif module_actif == liste_modules[12]:
     st.header(T("🧠 Séquence 3D T1 Ultra-Rapide (MP-RAGE)", "🧠 Ultra-Fast 3D T1 Sequence (MP-RAGE)"))
     
     # --- PRÉPARATION DES TEXTES POUR LE TABLEAU HTML ---
@@ -3437,7 +3722,7 @@ with t13:
         plt.close(fig_mp)
 
 # [TAB 14 : ASL (PERFUSION)]
-with t14:
+elif module_actif == liste_modules[13]:
     st.header(T("🩸 Perfusion ASL (Arterial Spin Labeling)", "🩸 ASL Perfusion (Arterial Spin Labeling)"))
     
     # --- 1. PRINCIPE & EXPLICATIONS ---
@@ -3598,7 +3883,7 @@ with t14:
     else: 
         st.warning(T("Module Anatomique requis pour la simulation clinique.", "Anatomy Module required for clinical simulation."))
 # [TAB : ANGIO TOF]
-with t_tof:
+elif module_actif == liste_modules[14]:
     st.header(T("🩸 Angiographie TOF (Time of Flight)", "🩸 TOF Angiography"))
 
     # =========================================================
@@ -3840,7 +4125,7 @@ with t_tof:
 
         else:
             st.error(f"Image '{f_name}' introuvable.")
-with t15:
+elif module_actif == liste_modules[15]:
     st.header(T("🍔 Suppression de Graisse (Fat Sat)", "🍔 Fat Suppression (Fat Sat)"))
     
     # --- DÉFINITION DES NOMS DES ONGLETS ---
@@ -4762,8 +5047,8 @@ with t15:
             
             st.pyplot(fig_psir)
             plt.close(fig_psir)
-with t16:
+elif module_actif == liste_modules[16]:
     render_safety_tab()
 
-with t17:
+elif module_actif == liste_modules[17]:
     render_architecture_tab()
