@@ -649,8 +649,8 @@ v_gm = res["v_gm"]
 v_stroke = res["v_stroke"]
 
 # --- LA LIGNE MANQUANTE ICI ---
-# On récupère v_fat du moteur. S'il n'existe pas dans le dictionnaire, on met 0.0
-v_fat = res.get("v_fat", 0.0)
+# On calcule directement le signal de la graisse pour qu'elle s'affiche toujours
+v_fat = phy.calculate_signal(tr, te, ti, 250, 60, 40, 0, 0.9, flip_angle, is_gre, is_dwi, 0) if not is_dwi else 0.0
 
 # --- 3. CALCUL DU SNR (SOLUTION ULTIME STABLE) ---
 snr_tr_ref = float(defaults['tr'])
@@ -2679,25 +2679,53 @@ elif module_actif == liste_modules[7]:
         with col_ctrl: 
             st.info(f"BW : **{bw} Hz/px**")
             st.markdown(T(
-                "Le décalage est inversement proportionnel à la bande passante.",
-                "Shift is inversely proportional to bandwidth."
+                "Le décalage spatial de la graisse par rapport à l'eau est inversement proportionnel à la bande passante (BW).",
+                "The spatial shift of fat relative to water is inversely proportional to the bandwidth (BW)."
             ))
-        with col_visu:
-            # Simulation du shift : Graisse (img_fat) décalée par rapport à l'eau (img_water)
-            if bw == 220: px_shift = 0.0 
-            else: px_shift = 220.0 / float(bw) # Formule arbitraire pour la démo
             
-            # On force un décalage visible pour la pédagogie si BW est faible
-            factor_visu = 5.0 # Pour rendre l'effet plus visible à l'écran
-            effective_shift = px_shift * factor_visu
+            # Affichage du texte explicatif uniquement si le décalage est créé
+            if bw != 220:
+                st.warning(T(
+                    "💡 **Explication :** La graisse résonne à une fréquence légèrement différente de l'eau. Avec cette bande passante, l'IRM se trompe sur la position spatiale de la graisse pendant le codage des fréquences, créant ce décalage visible (artéfact en croissant clair et sombre).",
+                    "💡 **Explanation:** Fat resonates at a slightly different frequency than water. With this bandwidth, the MRI miscalculates the spatial position of fat during frequency encoding, creating this visible shift (bright and dark crescent artifact)."
+                ))
+            else:
+                st.success(T("✅ Bande passante de référence (Décalage nul).", "✅ Reference bandwidth (Zero shift)."))
+            
+        with col_visu:
+            # Sécurité pour toujours afficher la graisse dans ce module
+            demo_fat = img_fat.copy()
+            if np.max(demo_fat) == 0:
+                demo_fat[(D >= 0.80) & (D < 0.95)] = 0.8 
 
-            sh = shift(img_fat, [0, effective_shift])
+            # Calcul du décalage : sans zone de confort
+            if bw == 220: 
+                px_shift = 0.0 
+            else: 
+                px_shift = 220.0 / float(bw) # Formule arbitraire pédagogique
+            
+            factor_visu = 5.0 # Pour rendre l'effet bien visible
+            
+            # On applique le sens du décalage (inversé si on monte ou on descend)
+            if bw > 220:
+                effective_shift = -px_shift * factor_visu
+            else:
+                effective_shift = px_shift * factor_visu
+
+            # Application du shift (mode constant pour des bords nets)
+            sh = shift(demo_fat, [0, effective_shift], mode='constant', cval=0.0)
             res = img_water + sh
             
+            # Affichage
             fig_cs = plt.figure(figsize=(5,5))
             ax_cs = fig_cs.add_subplot(111)
             ax_cs.imshow(res, cmap='gray', vmin=0, vmax=1.3)
-            ax_cs.set_title(f"Shift: {effective_shift:.1f} px")
+            
+            if effective_shift == 0:
+                ax_cs.set_title(T("Pas de décalage", "No shift"), color='green', fontweight='bold')
+            else:
+                ax_cs.set_title(f"Shift simulé : {abs(effective_shift):.1f} px", color='red', fontweight='bold')
+            
             ax_cs.axis('off')
             st.pyplot(fig_cs)
 
