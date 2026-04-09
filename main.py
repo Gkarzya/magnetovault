@@ -1518,7 +1518,6 @@ def render_architecture_tab():
     
     with c_action:
         st.write("") # Espace d'alignement
-        # Le bouton d'action est maintenant disponible pour les DEUX technologies
         simuler_coupure = st.toggle(
             T("⚡ Simuler Coupure / Quench", "⚡ Simulate Power Loss / Quench"), 
             value=False, 
@@ -1527,19 +1526,20 @@ def render_architecture_tab():
 
     st.divider()
 
-    col_view, col_desc = st.columns([2.5, 1])
+    # --- DISPOSITION CLASSIQUE (MENU VERTICAL) ---
+    col_view, col_desc = st.columns([2.8, 1.2])
     
     with col_desc:
         options_view = [
             T("1. Machine (Coque & Tunnel)", "1. Machine (Shell & Bore)"),
             T("2. Cryostat & Refroidissement", "2. Cryostat & Cooling"),
-            T("3. Aimant B0 (Champ Inhomogène)", "3. B0 Magnet (Inhomogeneous Field)"), 
-            T("4. Shim Passif (Ferromagnétique)", "4. Passive Shim (Ferromagnetic)"), 
-            T("5. Shim Actif (Bobines Orange)", "5. Active Shim (Orange Coils)"), 
-            T("6. GZ (Maxwell - Vert)", "6. GZ (Maxwell - Green)"), 
-            T("7. GY (Golay - Jaune)", "7. GY (Golay - Yellow)"), 
-            T("8. GX (Golay - Bleu)", "8. GX (Golay - Blue)"), 
-            T("9. Antenne RF (Body Coil - Rouge)", "9. RF Coil (Body Coil - Red)"),
+            T("3. Aimant B0 & 5 Gauss", "3. B0 Magnet & 5 Gauss"), 
+            T("4. Shim Passif", "4. Passive Shim"), 
+            T("5. Shim Actif & Blindage", "5. Active Shim & Shielding"), 
+            T("6. GZ (Vert)", "6. GZ (Green)"), 
+            T("7. GY (Jaune)", "7. GY (Yellow)"), 
+            T("8. GX (Bleu)", "8. GX (Blue)"), 
+            T("9. Antenne RF (Rouge)", "9. RF Coil (Red)"),
             T("10. Tout visualiser", "10. Show All")
         ]
         
@@ -1562,20 +1562,31 @@ def render_architecture_tab():
                        "🔬 **Analysis**: Visualizing the magnet's internal layers."))
 
     with col_view:
-        fig = plt.figure(figsize=(10, 8))
+        fig = plt.figure(figsize=(12, 10))
         ax = fig.add_subplot(111, projection='3d')
         ax.set_facecolor('black'); fig.patch.set_facecolor('black')
 
+        # --- LE SECRET POUR MANGER TOUT LE VIDE NOIR ---
+        fig.subplots_adjust(left=0, right=1, bottom=0, top=1)
+        ax.dist = 5.5  # ZOOM HYPER PUISSANT (Défaut = 10)
+
         mode_idx = options_view.index(view_mode)
-        show_all = (mode_idx == 9) # 10ème élément
+        show_all = (mode_idx == 9)
+
+        # Les limites de la boîte (Grandes pour autoriser le déploiement des lignes)
+        lim = 5.5 
+        ax.set_xlim(-lim, lim)
+        ax.set_ylim(-lim, lim)
+        ax.set_zlim(-lim, lim)
+        ax.set_box_aspect([1, 1, 1])
 
         def get_poids(target_idx):
             if show_all:
                 if target_idx >= 5: return 1.0  
-                return 0.3                      
+                return 0.2                      
             if target_idx == mode_idx: return 1.0
-            if target_idx == 1 and mode_idx == 2: return 0.6 
-            if target_idx < mode_idx: return 0.25
+            if target_idx == 1 and mode_idx == 2: return 0.4 
+            if target_idx < mode_idx: return 0.15
             return 0.0
 
         def draw_perfect_edges(r, l, alpha):
@@ -1596,9 +1607,6 @@ def render_architecture_tab():
                     if mode == "GZ": ax.plot([p, p], [0, 0], [0, amp], color=color, lw=3, alpha=alpha)
                     elif mode == "GX": ax.plot([0, 0], [p, p], [0, amp], color=color, lw=3, alpha=alpha)
                     elif mode == "GY": ax.plot([0, 0], [0, amp], [p, p], color=color, lw=3, alpha=alpha)
-                l_s = 1.35
-                ax.text(l_s if mode=="GZ" else 0, l_s if mode=="GX" else 0, l_s if mode=="GY" else 0, "+", color=color, fontsize=18, weight='bold', ha='center', alpha=alpha)
-                ax.text(-l_s if mode=="GZ" else 0, -l_s if mode=="GX" else 0, -l_s if mode=="GY" else 0, "-", color=color, fontsize=18, weight='bold', ha='center', alpha=alpha)
 
         def draw_coil(z_r, t_r, color, alpha):
             t_g = np.deg2rad(np.linspace(t_r[0], t_r[1], 30)); r = 1.05
@@ -1607,249 +1615,220 @@ def render_architecture_tab():
             ax.plot([z_r[0]]*30, r*np.cos(t_g), r*np.sin(t_g), color=color, lw=5, alpha=alpha)
             ax.plot([z_r[1]]*30, r*np.cos(t_g), r*np.sin(t_g), color=color, lw=5, alpha=alpha)
 
-        # --- 1. MACHINE & TUNNEL ---
+        # --- 1. MACHINE, TUNNEL & TABLE ---
         p_m = get_poids(0)
         if p_m > 0 or show_all:
             draw_perfect_edges(1.9, 2.2, p_m)
-            a_tun = 0.5 if show_all else 0.15
+            a_tun = 0.6 if show_all else 0.2
             z_t = np.linspace(-2.2, 2.2, 40); t_t = np.linspace(0, 2*np.pi, 40)
             if show_all: t_t = np.linspace(np.pi/2, 2*np.pi, 40)
             Z_t, T_t = np.meshgrid(z_t, t_t)
-            ax.plot_surface(Z_t, 0.85*np.cos(T_t), 0.85*np.sin(T_t), color='white', alpha=a_tun)
+            ax.plot_surface(Z_t, 0.85*np.cos(T_t), 0.85*np.sin(T_t), color='whitesmoke', alpha=a_tun)
+            
+            # TABLE D'EXAMEN
+            a_tab = 0.5 if show_all else p_m * 0.9
+            z_tab = np.linspace(-5.5, -1.0, 10) 
+            y_tab = np.linspace(-0.28, 0.28, 10) 
+            Z_tab, Y_tab = np.meshgrid(z_tab, y_tab)
+            X_tab = np.full_like(Z_tab, -0.35) 
+            ax.plot_surface(Z_tab, Y_tab, X_tab, color='#ecf0f1', alpha=a_tab)
+            
+            ax.plot([-5.5, -5.5], [-0.28, 0.28], [-0.35, -0.35], color='white', lw=2, alpha=a_tab)
+            ax.plot([-5.5, -1.0], [-0.28, -0.28], [-0.35, -0.35], color='white', lw=2, alpha=a_tab)
+            ax.plot([-5.5, -1.0], [0.28, 0.28], [-0.35, -0.35], color='white', lw=2, alpha=a_tab)
 
-        # --- 2. CRYOSTAT, TÊTE FROIDE ET QUENCH / MICRO-REFROIDISSEMENT ---
+            z_leg = np.linspace(-4.5, -3.2, 10)
+            x_leg = np.linspace(-2.2, -0.35, 10) 
+            Z_leg, X_leg = np.meshgrid(z_leg, x_leg)
+            Y_leg_L = np.full_like(Z_leg, -0.15)
+            Y_leg_R = np.full_like(Z_leg, 0.15)
+            ax.plot_surface(Z_leg, Y_leg_L, X_leg, color='#bdc3c7', alpha=a_tab*0.8)
+            ax.plot_surface(Z_leg, Y_leg_R, X_leg, color='#bdc3c7', alpha=a_tab*0.8)
+            
+            y_front = np.linspace(-0.15, 0.15, 10)
+            Y_front, X_front = np.meshgrid(y_front, x_leg)
+            Z_front = np.full_like(Y_front, -4.5)
+            ax.plot_surface(Z_front, Y_front, X_front, color='#95a5a6', alpha=a_tab*0.9)
+
+        # --- 2. CRYOSTAT & TÊTE FROIDE ---
         p_c = get_poids(1)
         if p_c > 0:
             if is_classic:
-                # Modèle Classique : Cylindre du cryostat principal
                 z_c = np.linspace(-2.0, 2.0, 40); t_c_s = np.linspace(0, 2*np.pi, 40)
                 if show_all: t_c_s = np.linspace(np.pi/2, 2*np.pi, 40)
                 Z_c, T_c = np.meshgrid(z_c, t_c_s)
-                
-                # Le cryostat se vide si Quench
-                color_cryo = '#7f8c8d' if simuler_coupure else '#00d2ff'
-                alpha_cryo = p_c * 0.05 if simuler_coupure else p_c * 0.2
+                color_cryo = '#7f8c8d' if simuler_coupure else '#0097e6'
+                alpha_cryo = p_c * 0.05 if simuler_coupure else p_c * 0.3
                 ax.plot_surface(Z_c, 1.75*np.cos(T_c), 1.75*np.sin(T_c), color=color_cryo, alpha=alpha_cryo)
                 
-                # Tube de Quench (Avant du cube)
-                z_q = np.linspace(1.8, 3.8, 10) 
-                theta_q = np.linspace(0, 2*np.pi, 20)
+                z_q = np.linspace(1.8, 3.8, 10) ; theta_q = np.linspace(0, 2*np.pi, 20)
                 Z_q, T_q = np.meshgrid(z_q, theta_q)
-                X_q = 0.8 + 0.4 * np.cos(T_q)
-                Y_q = 0.0 + 0.4 * np.sin(T_q)
-                
-                # S'illumine en bleu si Quench
+                X_q = 0.8 + 0.4 * np.cos(T_q); Y_q = 0.0 + 0.4 * np.sin(T_q)
                 color_quench = '#00d2ff' if simuler_coupure else '#bdc3c7'
-                alpha_quench = p_c * 0.9 if simuler_coupure else p_c * 0.8
-                ax.plot_surface(X_q, Y_q, Z_q, color=color_quench, alpha=alpha_quench)
+                ax.plot_surface(X_q, Y_q, Z_q, color=color_quench, alpha=p_c*0.8)
 
-                # Nuage d'hélium qui s'échappe si Quench (En BLANC)
                 if simuler_coupure:
-                    z_flux = np.linspace(3.8, 5.5, 15)
-                    Z_f, T_f = np.meshgrid(z_flux, theta_q)
-                    R_f = 0.4 + 0.3 * (Z_f - 3.8) # Le nuage s'élargit
-                    X_f = 0.8 + R_f * np.cos(T_f)
-                    Y_f = 0.0 + R_f * np.sin(T_f)
-                    # Modification ici : Cône blanc pour symboliser le gel de l'air
+                    z_flux = np.linspace(3.8, 5.5, 15); Z_f, T_f = np.meshgrid(z_flux, theta_q)
+                    R_f = 0.4 + 0.4 * (Z_f - 3.8); X_f = 0.8 + R_f * np.cos(T_f); Y_f = 0.0 + R_f * np.sin(T_f)
                     ax.plot_surface(X_f, Y_f, Z_f, color='white', alpha=p_c*0.7)
-            
             else:
-                # Modèle Low-Helium (Micro-refroidissement scellé)
                 z_serp = np.linspace(-1.8, 1.8, 400)
-                y_serp = 1.68 * np.cos(10 * np.pi * z_serp) 
-                z_vert_serp = 1.68 * np.sin(10 * np.pi * z_serp)
+                y_serp = 1.68 * np.cos(10 * np.pi * z_serp); z_vert_serp = 1.68 * np.sin(10 * np.pi * z_serp)
+                color_serp = '#7f8c8d' if simuler_coupure else '#0097e6'
+                ax.plot(z_serp, y_serp, z_vert_serp, color=color_serp, alpha=p_c*0.8, lw=1.5)
                 
-                color_serp = '#7f8c8d' if simuler_coupure else '#00d2ff'
-                alpha_serp = p_c * 0.15 if simuler_coupure else p_c * 0.8
-                ax.plot(z_serp, y_serp, z_vert_serp, color=color_serp, alpha=alpha_serp, lw=1.2)
-                
-                x_cv = np.linspace(-1.8, -1.2, 10) 
-                theta_cv = np.linspace(0, 2*np.pi, 20)
+                x_cv = np.linspace(-1.8, -1.2, 10); theta_cv = np.linspace(0, 2*np.pi, 20)
                 X_cv, T_cv = np.meshgrid(x_cv, theta_cv)
-                Y_cv = -1.2 + 0.25 * np.cos(T_cv) 
-                Z_cv = -1.8 + 0.25 * np.sin(T_cv) 
-                
+                Y_cv = -1.2 + 0.25 * np.cos(T_cv); Z_cv = -1.8 + 0.25 * np.sin(T_cv) 
                 color_cuve = '#00d2ff' if simuler_coupure else '#2c3e50'
-                alpha_cuve = p_c * 0.9 if simuler_coupure else p_c * 0.3
-                
-                ax.plot_surface(X_cv, Y_cv, Z_cv, color=color_cuve, alpha=alpha_cuve)
-                ax.plot_wireframe(X_cv, Y_cv, Z_cv, color='#95a5a6', alpha=p_c*0.5, rstride=5, cstride=5)
-                ax.plot([-1.5, -1.5], [-1.2, 0], [-1.55, -1.68], color='#bdc3c7', lw=3, alpha=p_c)
+                ax.plot_surface(X_cv, Y_cv, Z_cv, color=color_cuve, alpha=p_c*0.8)
 
-            # --- Tête froide (COMMUNE AUX DEUX SYSTÈMES) ---
-            z_ch = np.linspace(1.8, 2.2, 10) 
-            theta_ch = np.linspace(0, 2*np.pi, 20)
+            z_ch = np.linspace(1.8, 2.2, 10); theta_ch = np.linspace(0, 2*np.pi, 20)
             Z_ch, T_ch = np.meshgrid(z_ch, theta_ch)
-            X_ch = -1.0 + 0.25 * np.cos(T_ch)
-            Y_ch = 0.0 + 0.25 * np.sin(T_ch)
-            
-            # Éteinte (grise) pour les DEUX modèles lors de la simulation de coupure
+            X_ch = -1.0 + 0.25 * np.cos(T_ch); Y_ch = 0.0 + 0.25 * np.sin(T_ch)
             color_head = '#7f8c8d' if simuler_coupure else '#e67e22'
             ax.plot_surface(X_ch, Y_ch, Z_ch, color=color_head, alpha=p_c*0.9)
 
-        # --- 3. AIMANT SUPRA (B0) ET LIGNES DE CHAMP ---
-        
-        # On force l'opacité à 1.0 (100%) pour les étapes 2 (B0), 3 (Shim Passif) et 4 (Shim Actif)
-        if mode_idx in [2, 3, 4]:
-            p_b0 = 1.0
-        else:
-            # Pour les étapes suivantes (Gradients GZ et +, ou Tout visualiser), on reprend l'estompage normal
-            p_b0 = get_poids(2) 
+        # --- 3, 4, 5. AIMANT B0, LIGNES DE CHAMP ET 5 GAUSS ---
+        p_b0 = 1.0 if mode_idx in [2, 3, 4] else get_poids(2) 
             
         if p_b0 > 0:
-            # 1. BOBINAGE MOINS DENSE (Espaces entre les fibres)
-            # On utilise une fréquence de 25 (au lieu de 40 ou 120) pour bien séparer les spires
-            # Et une épaisseur de trait (lw) à 2.0 pour faire "câble épais"
             z_h = np.linspace(-1.9, 1.9, 800)
-            ax.plot(z_h, 1.6*np.cos(25*np.pi*z_h), 1.6*np.sin(25*np.pi*z_h), color='#8e44ad', alpha=p_b0, lw=2.0)
+            ax.plot(z_h, 1.6*np.cos(25*np.pi*z_h), 1.6*np.sin(25*np.pi*z_h), color='#8e44ad', alpha=p_b0*0.8, lw=2.0)
             
-            # --- ANIMATION B0 ET LIGNES DE CHAMP ---
             if not simuler_coupure:
                 
-                # LE VECTEUR B0 PRINCIPAL (Grosse flèche centrale)
-                # L'opacité utilise p_b0 pour rester brillante aux étapes du Shim
-                ax.quiver(-2.4, 0, 0, 4.8, 0, 0, color='#00d2ff', lw=6, alpha=p_b0, arrow_length_ratio=0.06)
-                ax.text(2.6, 0, 0, "B0", color='#00d2ff', fontsize=18, weight='bold', ha='center', va='center', alpha=p_b0)
+                ax.quiver(-4.5, 0, 0, 9.0, 0, 0, color='#00d2ff', lw=5, alpha=p_b0, arrow_length_ratio=0.03)
+                ax.text(4.7, 0, 0, "B0", color='#00d2ff', fontsize=18, weight='bold', ha='center', va='center', alpha=p_b0)
 
-                # LES 3 LIGNES DE CHAMP (Blanches, Intenses, Distordues)
-                z_l = np.linspace(-2.4, 2.4, 150)
-                offsets = [-0.8, 0, 0.8]  
+                # --- NOUVELLES PROPORTIONS 5 GAUSS ---
+                if mode_idx <= 2:
+                    r_5g_z = 8.5; r_5g_xy = 8.5  # Au départ : Frôle les bords absolus
+                elif mode_idx == 3:
+                    r_5g_z = 6.6; r_5g_xy = 6.6  # Shim Passif : Position intermédiaire
+                else:
+                    r_5g_z = 4.8; r_5g_xy = 4.8  # Shim Actif : Ancienne position du passif (finale)
                 
-                for off in offsets:
-                    if mode_idx <= 2: 
-                        # B0 brut : Grosses distorsions
-                        dev = 0.35 * np.sin(3 * z_l) + 0.15 * np.cos(5 * z_l)
-                    elif mode_idx == 3: 
-                        # Shim Passif : Petites vagues
-                        dev = 0.08 * np.sin(3 * z_l)
-                    else: 
-                        # Shim Actif et suite : Lignes parfaitement droites
-                        dev = np.zeros_like(z_l)
-                    
-                    # Tracé des lignes avec l'opacité p_b0 (multipliée par 0.9 pour éviter de saturer le blanc)
-                    ax.plot(z_l, off + dev, np.zeros_like(z_l), color='white', lw=3, alpha=p_b0*0.9)
-                    ax.quiver(0, off, 0, 0.4, 0, 0, color='white', lw=2, alpha=p_b0*0.9, arrow_length_ratio=0.3)
+                t_5g = np.linspace(0, 2 * np.pi, 100)
+                ax.plot(r_5g_z * np.cos(t_5g), r_5g_xy * np.sin(t_5g), np.zeros_like(t_5g), color='red', lw=2.5, ls=':', alpha=p_b0 * 0.8)
+                ax.plot(r_5g_z * np.cos(t_5g), np.zeros_like(t_5g), r_5g_xy * np.sin(t_5g), color='red', lw=2.5, ls=':', alpha=p_b0 * 0.8)
+                ax.plot(np.zeros_like(t_5g), r_5g_xy * np.cos(t_5g), r_5g_xy * np.sin(t_5g), color='red', lw=2.5, ls=':', alpha=p_b0 * 0.8)
+                
+                if mode_idx >= 2:
+                    # On s'assure que le texte reste lisible et ne sort pas de l'écran
+                    text_pos = min(r_5g_xy, 4.5)
+                    ax.text(0, text_pos, 0.5, "5 Gauss", color='red', fontsize=14, fontweight='bold', alpha=p_b0)
 
-        # --- 4. SHIM PASSIF (PLAQUES DE FER) ---
+                # --- LIGNES DE CHAMP EN 3D ---
+                z_l = np.linspace(-4.5, 4.5, 200) 
+                num_lines = 10  
+                angles = np.linspace(0, 2 * np.pi, num_lines, endpoint=False)
+                base_radius = 0.55
+                
+                if mode_idx <= 3:
+                    flare = np.where(np.abs(z_l) > 1.9, (np.abs(z_l) - 1.9)**1.8 * 0.4, 0)
+                else:
+                    flare = np.where(np.abs(z_l) > 1.9, (np.abs(z_l) - 1.9)**1.2 * 0.1, 0)
+
+                if mode_idx <= 2: 
+                    radial_dev = 0.25 * np.sin(4 * z_l) + flare
+                elif mode_idx == 3: 
+                    radial_dev = 0.08 * np.sin(5 * z_l) + flare
+                else: 
+                    radial_dev = np.zeros_like(z_l) + flare
+                
+                mid_idx = len(z_l) // 2
+                for theta in angles:
+                    x_line = (base_radius + radial_dev) * np.cos(theta)
+                    y_line = (base_radius + radial_dev) * np.sin(theta)
+                    ax.plot(z_l, y_line, x_line, color='#00d2ff', lw=1.5, alpha=p_b0*0.6)
+                    ax.quiver(0, y_line[mid_idx], x_line[mid_idx], 0.5, 0, 0, color='#00d2ff', lw=1.5, alpha=p_b0*0.9, arrow_length_ratio=0.3)
+
+        # --- 4, 5. SHIMS ---
         p_passif = get_poids(3)
         if p_passif > 0:
-            # Réduction drastique des plaques pour dégager la vue visuellement
-            theta_plates = np.linspace(0, 2*np.pi, 6, endpoint=False) # 6 plaques par anneau (au lieu de 12)
-            z_plates = [-1.0, 0.0, 1.0] # 3 anneaux espacés (au lieu de 5)
-            
+            theta_plates = np.linspace(0, 2*np.pi, 6, endpoint=False)
+            z_plates = [-1.0, 0.0, 1.0]
             for z_p in z_plates:
                 for t_p in theta_plates:
-                    x_p = 1.48 * np.cos(t_p)
-                    y_p = 1.48 * np.sin(t_p)
-                    # Pastilles grises métalliques
-                    ax.scatter(z_p, x_p, y_p, color='#bdc3c7', s=50, marker='s', alpha=p_passif)
+                    ax.scatter(z_p, 1.48 * np.cos(t_p), 1.48 * np.sin(t_p), color='#bdc3c7', s=80, marker='s', alpha=p_passif)
 
-        # --- 5. SHIM ACTIF (ORANGE) ---
         p_sh = get_poids(4)
         t_circ = np.linspace(0, 2*np.pi, 100)
         if p_sh > 0:
             for z_p in [-1.8, 1.8]:
                 ax.plot([z_p]*100, 1.45*np.cos(t_circ), 1.45*np.sin(t_circ), color='orange', lw=6, alpha=p_sh)
 
-        # --- 5. SHIM ACTIF (ORANGE) ---
-        p_sh = get_poids(4)
-        t_circ = np.linspace(0, 2*np.pi, 100)
-        if p_sh > 0:
-            for z_p in [-1.8, 1.8]:
-                ax.plot([z_p]*100, 1.45*np.cos(t_circ), 1.45*np.sin(t_circ), color='orange', lw=6, alpha=p_sh)
-
-        # --- 6. GRADIENT Z (VERT) ---
+        # --- 6, 7, 8. GRADIENTS (AVEC NOMS AFFICHER) ---
         p_gz = get_poids(5)
         if p_gz > 0:
             ax.plot([0.8]*100, np.cos(t_circ), np.sin(t_circ), color='#27ae60', lw=7, alpha=p_gz)
             ax.plot([-0.8]*100, np.cos(t_circ), np.sin(t_circ), color='#27ae60', lw=7, alpha=p_gz)
-            # L'index 5 correspond maintenant au GZ dans le menu
             if mode_idx == 5: 
                 draw_bipolar_ramp('#27ae60', "GZ", 1.0)
+                ax.text(0, 0, 2.2, T("Bobines de Maxwell (GZ)", "Maxwell Coils (GZ)"), color='#27ae60', fontsize=14, weight='bold', ha='center', alpha=1.0)
             
-        # --- 7. GRADIENT Y (JAUNE) ---
         p_gy = get_poids(6)
         if p_gy > 0:
             for z in [[0.1, 0.75], [-0.75, -0.1]]:
-                for t in [[65, 115], [245, 295]]: 
-                    draw_coil(z, t, '#f1c40f', p_gy)
-            # L'index 6 correspond maintenant au GY dans le menu
+                for t in [[65, 115], [245, 295]]: draw_coil(z, t, '#f1c40f', p_gy)
             if mode_idx == 6: 
                 draw_bipolar_ramp('#f1c40f', "GY", 1.0)
+                ax.text(0, 0, 2.2, T("Bobines de Golay (GY)", "Golay Coils (GY)"), color='#f1c40f', fontsize=14, weight='bold', ha='center', alpha=1.0)
             
-        # --- 8. GRADIENT X (BLEU) ---
         p_gx = get_poids(7)
         if p_gx > 0:
             for z in [[0.1, 0.75], [-0.75, -0.1]]:
-                for t in [[-25, 25], [155, 205]]: 
-                    draw_coil(z, t, '#2980b9', p_gx)
-            # L'index 7 correspond maintenant au GX dans le menu
+                for t in [[-25, 25], [155, 205]]: draw_coil(z, t, '#2980b9', p_gx)
             if mode_idx == 7: 
                 draw_bipolar_ramp('#2980b9', "GX", 1.0)
+                ax.text(0, 0, 2.2, T("Bobines de Golay (GX)", "Golay Coils (GX)"), color='#2980b9', fontsize=14, weight='bold', ha='center', alpha=1.0)
 
-        # --- 9. ANTENNE RF (BODY COIL - ROUGE) ---
+        # --- 9. ANTENNE RF ---
         p_rf = get_poids(8)
         if p_rf > 0:
-            r_rf = 0.75  # Rayon juste à l'intérieur des gradients et de la coque
-            z_rf_ends = [-1.0, 1.0] # Longueur de l'antenne
-            color_rf = '#ff0000' # Rouge Vif
-            
-            # Les 2 anneaux (End-rings)
+            r_rf = 0.75
+            z_rf_ends = [-1.0, 1.0]
             for z_ring in z_rf_ends:
-                ax.plot([z_ring]*100, r_rf*np.cos(t_circ), r_rf*np.sin(t_circ), color=color_rf, lw=4, alpha=p_rf)
-            
-            # Les 16 barreaux (Rungs)
-            num_rungs = 16
-            for i in range(num_rungs):
-                angle = i * (2 * np.pi / num_rungs)
-                ax.plot(z_rf_ends, [r_rf*np.cos(angle)]*2, [r_rf*np.sin(angle)]*2, color=color_rf, lw=2, alpha=p_rf)
-            
+                ax.plot([z_ring]*100, r_rf*np.cos(t_circ), r_rf*np.sin(t_circ), color='#ff0000', lw=4, alpha=p_rf)
+            for i in range(16):
+                angle = i * (2 * np.pi / 16)
+                ax.plot(z_rf_ends, [r_rf*np.cos(angle)]*2, [r_rf*np.sin(angle)]*2, color='#ff0000', lw=2, alpha=p_rf)
             if mode_idx == 8:
-                ax.text(0, 0, 1.0, "Body Coil (B1)", color=color_rf, fontsize=14, weight='bold', ha='center', alpha=p_rf)
+                ax.text(0, 0, 1.2, "Body Coil (B1)", color='#ff0000', fontsize=16, weight='bold', ha='center', alpha=1.0)
 
-        # Application de la vue finale
-        ax.view_init(elev=22, azim=-125)
+        # --- CONTRAINTE ABSOLUE DE LA CAMÉRA ---
+        lim_cam = 4.5 
+        ax.set_xlim(-lim_cam, lim_cam)
+        ax.set_ylim(-lim_cam, lim_cam)
+        ax.set_zlim(-lim_cam, lim_cam)
+        
+        ax.view_init(elev=20, azim=-115)
         ax.set_axis_off()
-        st.pyplot(fig)
+        st.pyplot(fig, use_container_width=True)
 
     # --- EXPLICATIONS DÉTAILLÉES ---
     st.divider()
     cols = st.columns(3)
     with cols[0]:
         st.subheader(T("🧊 Cryogénie & B0", "🧊 Cryogenics & B0"))
-        st.write(T("**Coque & Tunnel** : Structure mécanique et accueil du patient.", "**Shell & Bore** : Mechanical structure and patient accommodation."))
+        st.write(T("**Coque, Tunnel & Table** : Structure mécanique et accueil du patient.", "**Shell, Bore & Table** : Mechanical structure and patient accommodation."))
         
         if is_classic:
-            if simuler_coupure:
-                st.write(T("⚠️ **Quench !** : L'hélium bout violemment (1L liquide = 700L gaz) et s'échappe par la cheminée en gelant l'humidité de l'air. Le cryostat se vide de ses 1500L.", 
-                           "⚠️ **Quench!** : Helium boils violently (1L liquid = 700L gas) and escapes through the chimney, freezing air moisture. The cryostat empties its 1500L."))
-            else:
-                st.write(T("**Cryostat (Bain)** : Enceinte thermique remplie de ~1500L d'hélium liquide (-269°C).", "**Cryostat (Bath)** : Thermal enclosure filled with ~1500L of liquid helium (-269°C)."))
-                st.write(T("**Tête Froide** : Compresseur re-condensant l'hélium gazeux pour éviter son évaporation.", "**Cold Head** : Compressor re-condensing gaseous helium to prevent evaporation."))
-                st.write(T("**Tube de Quench** : Cheminée de sécurité pour évacuer le gaz vers l'extérieur en cas d'urgence.", "**Quench Pipe** : Safety chimney to vent gas outside in an emergency."))
+            st.write(T("**Cryostat (Bain)** : Enceinte thermique remplie de ~1500L d'hélium liquide (-269°C).", "**Cryostat (Bath)** : Thermal enclosure filled with ~1500L of liquid helium (-269°C)."))
         else:
-            st.write(T("**Micro-refroidissement** : Fini le grand bain ! Un fin serpentin d'hélium liquide (0.7L) refroidit directement l'aimant.", "**Micro-cooling** : No more large bath! A thin coil of liquid helium (0.7L) directly cools the magnet."))
-            st.write(T("**Tête Froide** : Compresseur indispensable pour refroidir et re-condenser l'hélium dans le circuit scellé. Sans elle, la pression augmente.", "**Cold Head** : Compressor essential to cool and re-condense helium in the sealed circuit. Without it, pressure rises."))
-            if simuler_coupure:
-                st.write(T("⚠️ **Vidange Sécurisée** : L'hélium s'étend et est transféré dans la cuve de secours. Zéro perte d'hélium !", 
-                           "⚠️ **Secure Drain** : Helium expands and is transferred to the backup tank. Zero helium loss!"))
-            else:
-                st.write(T("**Cuve de Rétention** : En cas de coupure (Tête froide HS), l'hélium est transféré dans cette cuve de secours.", "**Retention Tank** : In case of power loss (Cold head down), helium is transferred to this backup tank."))
+            st.write(T("**Micro-refroidissement** : Un fin serpentin d'hélium liquide refroidit directement l'aimant.", "**Micro-cooling** : A thin coil of liquid helium directly cools the magnet."))
 
-        if simuler_coupure:
-            st.write(T("❌ **Aimant Supra** : Le réchauffement entraîne la perte immédiate de la supraconductivité et du champ B0.", "❌ **Superconducting Magnet** : Heating leads to immediate loss of superconductivity and B0 field."))
-        else:
-            st.write(T("**Aimant Supra** : Bobinage principal générant le champ statique B0.", "**Superconducting Magnet** : Main coil generating the static B0 field."))
-        
     with cols[1]:
-        st.subheader(T("🎯 Homogénéité (Shim)", "🎯 Homogeneity (Shim)"))
-        st.write(T("**Shim Passif** : Petites plaques de métal (Fer) disposées dans la machine lors de l'installation pour gommer les gros défauts du champ B0.", "**Passive Shim** : Small metal plates (Iron) placed inside the scanner during installation to erase major B0 defects."))
-        st.write(T("**Shim Actif (Orange)** : Bobines électriques ajustables qui compensent les inhomogénéités fines et variables (ex: forme du patient).", "**Active Shim (Orange)** : Adjustable electric coils that compensate for fine and variable inhomogeneities (e.g. patient shape)."))
+        st.subheader(T("🎯 Homogénéité & Sécurité", "🎯 Homogeneity & Safety"))
+        st.write(T("**Ligne 5 Gauss** : Délimite la zone de danger (attraction des métaux). Rétractée par le Blindage Actif.", "**5 Gauss Line** : Defines the danger zone (metal attraction). Retracted by Active Shielding."))
+        st.write(T("**Shim Actif & Passif** : Bobines et plaques qui lissent les lignes du champ magnétique B0 à l'intérieur du tunnel.", "**Active & Passive Shim** : Coils and plates that smooth the B0 magnetic field lines inside the bore."))
+        
     with cols[2]:
         st.subheader(T("📡 Codage Spatial", "📡 Spatial Encoding"))
-        st.write(T("**GZ (Vert)** : Bobines de Maxwell. Sélection de la coupe transversale.", "**GZ (Green)** : Maxwell coils. Cross-sectional slice selection."))
-        st.write(T("**GY/GX (Jaune/Bleu)** : Bobines de Golay. Codage de phase et de fréquence.", "**GY/GX (Yellow/Blue)** : Golay coils. Phase and frequency encoding."))
-        st.write(T("**Rampes +/-** : Illustrent la variation linéaire de champ induite par les gradients.", "**+/- Ramps** : Illustrate the linear field variation induced by the gradients."))
+        st.write(T("**GZ (Vert)** : Sélection de la coupe transversale.", "**GZ (Green)** : Cross-sectional slice selection."))
+        st.write(T("**GY/GX (Jaune/Bleu)** : Codage de phase et de fréquence.", "**GY/GX (Yellow/Blue)** : Phase and frequency encoding."))
+        st.write(T("**Antenne (Rouge)** : Émet la radiofréquence (90°/180°).", "**Coil (Red)** : Emits the radiofrequency (90°/180°)."))
 # --- 13. AFFICHAGE FINAL / FINAL DISPLAY ---
 st.title(T("Simulateur MagnétoVault", "MagnetoVault Simulator"))
 
@@ -2733,7 +2712,18 @@ elif module_actif == liste_modules[4]:
                     labels_map = processor.get_anatomical_labels(ax, idx)
                     fig = px.imshow(img_display, color_continuous_scale='gray', zmin=0, zmax=1)
                     fig.update_traces(customdata=labels_map, hovertemplate="<b>%{customdata}</b><extra></extra>")
-                    fig.update_layout(margin=dict(l=0, r=0, t=0, b=0), coloraxis_showscale=False, width=600, height=600)
+                    
+                    # CORRECTION : Masquer totalement les axes pour récupérer l'espace perdu
+                    fig.update_layout(
+                        margin=dict(l=0, r=0, t=0, b=0), 
+                        coloraxis_showscale=False, 
+                        width=600, 
+                        height=600,
+                        xaxis=dict(visible=False), # Supprime l'axe X
+                        yaxis=dict(visible=False), # Supprime l'axe Y
+                        plot_bgcolor='black',
+                        paper_bgcolor='black'
+                    )
                     st.plotly_chart(fig, config={'displayModeBar': False})
                 else:
                     st.image(img_display, clamp=True, width=600)
