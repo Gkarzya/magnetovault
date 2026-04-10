@@ -2,6 +2,9 @@ streamlit
 numpy
 matplotlib
 scipy
-nilearn
-nibabel
 plotly
+Pillow
+nilearn
+opencv-python-headless
+streamlit-paste-button
+google-genai
