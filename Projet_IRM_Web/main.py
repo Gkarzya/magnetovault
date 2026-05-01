@@ -2074,8 +2074,14 @@ elif module_actif == liste_modules[1]:
     T_WM = get_p('T_WM', {'T1': 600, 'T2': 80, 'PD': 0.7, 'ADC': 0.7e-3})
     T_GM = get_p('T_GM', {'T1': 1100, 'T2': 100, 'PD': 0.8, 'ADC': 0.8e-3})
     T_CSF = get_p('T_LCR', {'T1': 4000, 'T2': 2000, 'PD': 1.0, 'ADC': 3.0e-3})
-    T_FAT = get_p('T_FAT', {'T1': 250, 'T2': 60, 'PD': 0.9, 'ADC': 0})
     T_STROKE = get_p('T_STROKE', {'T1': 1100, 'T2': 200, 'PD': 0.9, 'ADC': 0.4e-3})
+    
+    # On crée une copie locale pour ne pas altérer la constante globale
+    T_FAT = get_p('T_FAT', {'T1': 250, 'T2': 60, 'PD': 0.9, 'ADC': 0}).copy()
+    
+    # --- CORRECTION : Effet J-coupling (Graisse brillante en TSE) ---
+    if turbo > 1:
+        T_FAT['T2'] = 150  # Allongement artificiel du T2 de la graisse
 
     # =========================================================
     # 2. PHYSIQUE : TEMPS (TA)
@@ -2505,6 +2511,12 @@ elif module_actif == liste_modules[2]:
     with sub_tabs[0]:
         st.markdown(T("<h3 style='color: #4f46e5; border-bottom: 2px solid #4f46e5; padding-bottom: 5px;'>🎛️ Simulateur de Codage</h3>", "<h3 style='color: #4f46e5; border-bottom: 2px solid #4f46e5; padding-bottom: 5px;'>🎛️ Encoding Simulator</h3>"), unsafe_allow_html=True)
         
+        # --- NOUVEAU : Avertissement Repliement ---
+        st.caption(T("⚠️ **Note clinique :** Si le déphasage entre deux pixels dépasse 180° (limite physique), la machine ne sait plus d'où vient le signal, ce qui crée un artéfact de repliement (Aliasing).", 
+                     "⚠️ **Clinical note:** If the phase shift between two pixels exceeds 180° (physical limit), the machine loses spatial tracking, creating an aliasing artifact."))
+        
+        # HTML/JS AVEC TRADUCTION INJECTÉE ...
+        
         # HTML/JS AVEC TRADUCTION INJECTÉE (Flèches orientées vers le haut par défaut)
         components.html(T("""<!DOCTYPE html><html><head><style>body{margin:0;padding:5px;font-family:sans-serif;} .box{display:flex;gap:15px;} .ctrl{width:220px;padding:10px;background:#f9f9f9;border:1px solid #ccc;border-radius:8px;} canvas{border:1px solid #ccc;background:#f8f9fa;border-radius:8px;} input{width:100%;} label{font-size:11px;font-weight:bold;display:block;} button{width:100%;padding:8px;background:#4f46e5;color:white;border:none;border-radius:4px;cursor:pointer;}</style></head><body><div class='box'><div class='ctrl'><h4>Codage</h4><label>Freq</label><input type='range' id='f' min='-100' max='100' value='0'><br><label>Phase</label><input type='range' id='p' min='-100' max='100' value='0'><br><label>Coupe</label><input type='range' id='z' min='-100' max='100' value='0'><br><label>Matrice</label><input type='range' id='g' min='5' max='20' value='12'><br><button onclick='rst()'>Reset</button></div><div><canvas id='c1' width='350' height='350'></canvas><canvas id='c2' width='80' height='350'></canvas></div></div><script>const c1=document.getElementById('c1');const x=c1.getContext('2d');const c2=document.getElementById('c2');const z=c2.getContext('2d');const sf=document.getElementById('f');const sp=document.getElementById('p');const sz=document.getElementById('z');const sg=document.getElementById('g');const pd=30;function arrow(ctx,x,y,a,s){const l=s*0.35;ctx.save();ctx.translate(x,y);ctx.rotate(a);ctx.beginPath();ctx.moveTo(-l,0);ctx.lineTo(l,0);ctx.lineTo(l-6,-6);ctx.moveTo(l,0);ctx.lineTo(l-6,6);ctx.strokeStyle='white';ctx.lineWidth=1.5;ctx.stroke();ctx.restore();} function draw(){x.clearRect(0,0,350,350);z.clearRect(0,0,80,350);const fv=parseFloat(sf.value);const pv=parseFloat(sp.value);const zv=parseFloat(sz.value);const gs=parseInt(sg.value);const st=(350-2*pd)/gs;const h=(pd*0.8)*(fv/100);x.fillStyle='rgba(255,0,0,0.3)';if(fv!=0){x.beginPath();x.moveTo(pd,pd/2);x.lineTo(pd,pd/2-h);x.lineTo(350-pd,pd/2+h);x.lineTo(350-pd,pd/2);x.fill();}const w=(pd*0.8)*(pv/100);x.fillStyle='rgba(0,255,0,0.3)';if(pv!=0){x.beginPath();x.moveTo(350-pd/2,pd);x.lineTo(350-pd/2-w,pd);x.lineTo(350-pd/2+w,350-pd);x.lineTo(350-pd/2,350-pd);x.fill();} for(let i=0;i<gs;i++){for(let j=0;j<gs;j++){const cx=pd+i*st+st/2;const cy=pd+j*st+st/2;const ph=(i-gs/2)*(fv/100)*3+(j-gs/2)*(pv/100)*3 - Math.PI/2;const cph=(j-gs/2)*(pv/100);x.strokeStyle='black';x.beginPath();x.arc(cx,cy,st*0.4,0,6.28);x.fillStyle='#94a3b8';x.fill();if(cph>0.01)x.fillStyle='rgba(255,255,0,0.5)';if(cph<-0.01)x.fillStyle='rgba(0,0,255,0.5)';x.fill();arrow(x,cx,cy,ph,st*0.6);}}const yz=175-(zv/100)*150;const gr=z.createLinearGradient(0,0,0,350);gr.addColorStop(0,'red');gr.addColorStop(1,'blue');z.fillStyle=gr;z.fillRect(10,10,20,330);z.strokeStyle='black';z.lineWidth=3;z.beginPath();z.moveTo(10,yz);z.lineTo(70,yz);z.stroke();z.fillStyle='black';z.fillText('Z',35,yz-5);} [sf,sp,sz,sg].forEach(s=>s.addEventListener('input',draw));function rst(){sf.value=0;sp.value=0;sz.value=0;sg.value=12;draw();}draw();</script></body></html>""", 
         """<!DOCTYPE html><html><head><style>body{margin:0;padding:5px;font-family:sans-serif;} .box{display:flex;gap:15px;} .ctrl{width:220px;padding:10px;background:#f9f9f9;border:1px solid #ccc;border-radius:8px;} canvas{border:1px solid #ccc;background:#f8f9fa;border-radius:8px;} input{width:100%;} label{font-size:11px;font-weight:bold;display:block;} button{width:100%;padding:8px;background:#4f46e5;color:white;border:none;border-radius:4px;cursor:pointer;}</style></head><body><div class='box'><div class='ctrl'><h4>Encoding</h4><label>Freq</label><input type='range' id='f' min='-100' max='100' value='0'><br><label>Phase</label><input type='range' id='p' min='-100' max='100' value='0'><br><label>Slice</label><input type='range' id='z' min='-100' max='100' value='0'><br><label>Matrix</label><input type='range' id='g' min='5' max='20' value='12'><br><button onclick='rst()'>Reset</button></div><div><canvas id='c1' width='350' height='350'></canvas><canvas id='c2' width='80' height='350'></canvas></div></div><script>const c1=document.getElementById('c1');const x=c1.getContext('2d');const c2=document.getElementById('c2');const z=c2.getContext('2d');const sf=document.getElementById('f');const sp=document.getElementById('p');const sz=document.getElementById('z');const sg=document.getElementById('g');const pd=30;function arrow(ctx,x,y,a,s){const l=s*0.35;ctx.save();ctx.translate(x,y);ctx.rotate(a);ctx.beginPath();ctx.moveTo(-l,0);ctx.lineTo(l,0);ctx.lineTo(l-6,-6);ctx.moveTo(l,0);ctx.lineTo(l-6,6);ctx.strokeStyle='white';ctx.lineWidth=1.5;ctx.stroke();ctx.restore();} function draw(){x.clearRect(0,0,350,350);z.clearRect(0,0,80,350);const fv=parseFloat(sf.value);const pv=parseFloat(sp.value);const zv=parseFloat(sz.value);const gs=parseInt(sg.value);const st=(350-2*pd)/gs;const h=(pd*0.8)*(fv/100);x.fillStyle='rgba(255,0,0,0.3)';if(fv!=0){x.beginPath();x.moveTo(pd,pd/2);x.lineTo(pd,pd/2-h);x.lineTo(350-pd,pd/2+h);x.lineTo(350-pd,pd/2);x.fill();}const w=(pd*0.8)*(pv/100);x.fillStyle='rgba(0,255,0,0.3)';if(pv!=0){x.beginPath();x.moveTo(350-pd/2,pd);x.lineTo(350-pd/2-w,pd);x.lineTo(350-pd/2+w,350-pd);x.lineTo(350-pd/2,350-pd);x.fill();} for(let i=0;i<gs;i++){for(let j=0;j<gs;j++){const cx=pd+i*st+st/2;const cy=pd+j*st+st/2;const ph=(i-gs/2)*(fv/100)*3+(j-gs/2)*(pv/100)*3 - Math.PI/2;const cph=(j-gs/2)*(pv/100);x.strokeStyle='black';x.beginPath();x.arc(cx,cy,st*0.4,0,6.28);x.fillStyle='#94a3b8';x.fill();if(cph>0.01)x.fillStyle='rgba(255,255,0,0.5)';if(cph<-0.01)x.fillStyle='rgba(0,0,255,0.5)';x.fill();arrow(x,cx,cy,ph,st*0.6);}}const yz=175-(zv/100)*150;const gr=z.createLinearGradient(0,0,0,350);gr.addColorStop(0,'red');gr.addColorStop(1,'blue');z.fillStyle=gr;z.fillRect(10,10,20,330);z.strokeStyle='black';z.lineWidth=3;z.beginPath();z.moveTo(10,yz);z.lineTo(70,yz);z.stroke();z.fillStyle='black';z.fillText('Z',35,yz-5);} [sf,sp,sz,sg].forEach(s=>s.addEventListener('input',draw));function rst(){sf.value=0;sp.value=0;sz.value=0;sg.value=12;draw();}draw();</script></body></html>"""), height=450)
@@ -2524,12 +2536,13 @@ elif module_actif == liste_modules[2]:
         
         col_k1, col_k2 = st.columns([1, 1])
         with col_k1:
-            
             lbl_mode = T("Ordre de Remplissage", "Filling Order")
-            opt_lin = T("Linéaire (Haut -> Bas)", "Linear (Top -> Bottom)")
-            opt_cen = T("Centrique (Centre -> Bords)", "Centric (Center -> Edges)")
+            opt_lin = T("Linéaire cartésien (Haut -> Bas)", "Linear Cartesian (Top -> Bottom)")
             
-            fill_mode = st.radio(lbl_mode, [opt_lin, opt_cen], key=f"k_mode_{current_reset_id}")
+            # --- LE NOUVEAU NOM ---
+            opt_rad = T("Radial / Spirale (Proportionnel)", "Radial / Spiral (Proportional)")
+            
+            fill_mode = st.radio(lbl_mode, [opt_lin, opt_rad], key=f"k_mode_{current_reset_id}")
             acq_pct = st.slider(T("Progression (%)", "Progress (%)"), 0, 100, 10, step=1, key=f"k_pct_{current_reset_id}")
             
             st.divider()
@@ -2593,10 +2606,21 @@ elif module_actif == liste_modules[2]:
                 plt.close(fig_tse)
         
         with col_k2:
-            mask_k = np.zeros((S, S)); lines_to_fill = int(S * (acq_pct / 100.0))
-            if "Linéaire" in fill_mode or "Linear" in fill_mode: mask_k[0:lines_to_fill, :] = 1
-            else: center_line = S // 2; half = lines_to_fill // 2; mask_k[center_line-half:center_line+half, :] = 1
-            kspace_masked = f * mask_k; img_rec = np.abs(np.fft.ifft2(np.fft.ifftshift(kspace_masked)))
+            mask_k = np.zeros((S, S))
+            
+            if fill_mode == opt_lin: 
+                # Remplissage de haut en bas
+                lines_to_fill = int(S * (acq_pct / 100.0))
+                mask_k[0:lines_to_fill, :] = 1
+            else: 
+                # Remplissage proportionnel (Cercle qui grandit du centre vers la périphérie)
+                # D va de 0 (centre) à ~1.41 (coins). On multiplie par 1.5 pour bien couvrir les bords à 100%.
+                rayon_actuel = (acq_pct / 100.0) * 1.5 
+                mask_k[D <= rayon_actuel] = 1
+                
+            kspace_masked = f * mask_k
+            img_rec = np.abs(np.fft.ifft2(np.fft.ifftshift(kspace_masked)))
+            
             fig_k, ax_k = plt.subplots(figsize=(4, 4))
             ax_k.imshow(20 * np.log(np.abs(kspace_masked) + 1), cmap='inferno'); ax_k.axis('off')
             st.pyplot(fig_k)
@@ -2679,6 +2703,10 @@ elif module_actif == liste_modules[4]:
                 help=T("Identifie les structures au survol.", "Identifies structures on hover.")
             )
             
+            # --- NOUVEAU : Disclaimer Atlas ---
+            st.caption(T("ℹ️ *Cet atlas est macroscopique (conçu pour simuler les grands contrastes tissulaires). Il ne détaille pas les micro-structures de la substance blanche (capsules, faisceaux).* ", 
+                         "ℹ️ *This atlas is macroscopic (designed to simulate major tissue contrasts). It does not detail white matter micro-structures (capsules, tracts).*"))
+            
             # FEEDBACK VISUEL
             if is_dwi: 
                 if show_adc_map: st.info(T("🗺️ **Mode Carte ADC**", "🗺️ **ADC Map Mode**"))
@@ -2693,10 +2721,13 @@ elif module_actif == liste_modules[4]:
             
             seq_type_arg = 'dwi' if is_dwi else ('gre' if is_gre else None)
             
-            # 1. GÉNÉRATION IMAGE BRUTE
+           # 1. GÉNÉRATION IMAGE BRUTE
             img_raw = processor.get_slice(ax, idx, w_vals, seq_type=seq_type_arg, te=te, tr=tr, fa=flip_angle, b_val=b_value, adc_mode=show_adc_map, with_stroke=show_stroke)
             
             if img_raw is not None:
+                # --- NOUVEAU : Inversion D/G (Convention Radiologique) ---
+                img_raw = np.fliplr(img_raw)
+                                              
                 # 2. AJOUT BRUIT & FLOU (Si DWI)
                 if is_dwi and not show_adc_map and b_value > 0:
                     noise = np.random.normal(0, (b_value/1000.0)*0.05, img_raw.shape)
@@ -2922,6 +2953,10 @@ elif module_actif == liste_modules[6]:
 elif module_actif == liste_modules[7]:
     st.header(T("☣️ Laboratoire d'Artefacts", "☣️ Artifact Laboratory"))
     
+    # --- NOUVEAU : Message d'aide ---
+    st.info(T("💡 Astuce : Utilisez le menu de gauche (Géométrie / Options) pour modifier le FOV et la Bande Passante afin de déclencher les artéfacts.", 
+              "💡 Tip: Use the left menu (Geometry / Options) to change FOV and Bandwidth to trigger artifacts."))
+              
     col_ctrl, col_visu = st.columns([1, 2])
     
     # --- DÉFINITION DES NOMS TRADUITS POUR LE MENU ---
@@ -3455,7 +3490,8 @@ elif module_actif == liste_modules[9]:
     ax[1].text(0.3, 0.8, txt_b1000, color='black', ha='center', fontsize=8, fontweight='bold')
     ax[1].text(0.7, 0.8, txt_map, color='black', ha='center', fontsize=8, fontweight='bold')
     
-    ax[1].add_patch(patches.Circle((0.3, 0.5), 0.15, edgecolor='red', facecolor='white', linewidth=4)) 
+    # --- CORRECTION : Le LCR s'effondre à b=1000 en diffusion libre (facecolor='black') ---
+    ax[1].add_patch(patches.Circle((0.3, 0.5), 0.15, edgecolor='red', facecolor='black', linewidth=4)) 
     ax[1].text(0.3, 0.25, txt_dwi, color='white', ha='center', fontweight='bold', fontsize=7)
     
     ax[1].text(0.5, 0.5, "➔", color='white', fontsize=12, ha='center', va='center')
@@ -3721,8 +3757,20 @@ elif module_actif == liste_modules[11]:
                 st.info(T("""**🧭 L'Analogie de la Boussole** \n * **L'Aiguille (Bleue)** : C'est le Signal IRM total. \n * **Sa Longueur** : La force du signal (Magnitude). \n * **Sa Direction** : La nature du tissu (Phase).""",
                           """**🧭 The Compass Analogy** \n * **The Needle (Blue)**: It is the total MRI Signal. \n * **Its Length**: Signal Strength (Magnitude). \n * **Its Direction**: Tissue Nature (Phase)."""))
             with c_txt2:
-                st.warning(T("""**💡 Pourquoi Réel & Imaginaire ?** \n L'ordinateur ne stocke pas une flèche. Il stocke ses ombres : \n * **Partie Réelle :** L'ombre au sol (Axe X). \n * **Partie Imaginaire :** L'ombre au mur (Axe Y).""",
-                             """**💡 Why Real & Imaginary?** \n The computer doesn't store an arrow. It stores its shadows: \n * **Real Part:** Floor shadow (X Axis). \n * **Imaginary Part:** Wall shadow (Y Axis)."""))
+                # --- MODIFIÉ : Explication simple sans "voies I et Q" ---
+                st.warning(T(
+                    "**💡 Pourquoi Réel & Imaginaire ?** \n\n"
+                    "L'ordinateur ne stocke pas une flèche tournante. Il stocke ses deux ombres : \n"
+                    "* **Partie Réelle :** L'ombre au sol (Axe X). \n"
+                    "* **Partie Imaginaire :** L'ombre au mur (Axe Y).\n\n"
+                    "*Techniquement, la machine capte physiquement ces deux 'ombres' en même temps en utilisant deux antennes placées à 90° l'une de l'autre (une qui écoute 'de face' et l'autre 'de profil'). C'est ce qu'on appelle la détection en quadrature !*",
+                    
+                    "**💡 Why Real & Imaginary?** \n\n"
+                    "The computer doesn't store a spinning arrow. It stores its two shadows: \n"
+                    "* **Real Part:** Floor shadow (X Axis). \n"
+                    "* **Imaginary Part:** Wall shadow (Y Axis).\n\n"
+                    "*Technically, the scanner physically captures both 'shadows' at the same time by using two antennas placed 90° apart (one listening 'frontally' and the other 'from the side'). This is called quadrature detection!*"
+                ))
     
     # --- SOUS-ONGLET 2 : LE DIPÔLE ---
     with swi_tab2:
@@ -3810,6 +3858,12 @@ elif module_actif == liste_modules[11]:
                 # Récupération image via Anatomie
                 img_mag = processor.get_slice(axis_code, swi_slice, {}, swi_mode='mag', te=te_simu, with_bleeds=show_microbleeds_swi)
                 img_phase = processor.get_slice(axis_code, swi_slice, {}, swi_mode='phase', with_bleeds=show_microbleeds_swi, swi_sys=sys_arg, swi_sub=sub_arg, with_dipole=show_dipole_test)
+                
+                # --- NOUVEAU : Inversion D/G (Convention Radiologique) ---
+                if img_mag is not None:
+                    img_mag = np.fliplr(img_mag)
+                if img_phase is not None:
+                    img_phase = np.fliplr(img_phase)
                 
                 c_mag, c_pha, c_min = st.columns(3)
                 
@@ -4070,22 +4124,21 @@ elif module_actif == liste_modules[13]:
             st.info(T("Image explicative non trouvée.", "Explanatory image not found."))
             
     with c_texte:
-        # Markdown explicatif multilingue
+        # --- MODIFIÉ ---
         txt_fr = """
         ### Comment ça marche ?
-        1.  **Marquage (Tag) :** Une impulsion "retourne" le sang au niveau du cou.
+        1.  **Marquage (Tag) :** Une impulsion RF **inverse l'aimantation (180°)** du sang au niveau du cou.
         2.  **Délai (PLD) :** On attend que le sang monte au cerveau.
         3.  **Acquisition :** On prend une image "Marquée".
         4.  **Soustraction :** Image Contrôle - Image Marquée = Perfusion.
         """
         txt_en = """
         ### How does it work?
-        1.  **Labeling (Tag):** A pulse "flips" the blood at the neck level.
+        1.  **Labeling (Tag):** An RF pulse **inverts the magnetization (180°)** of the blood at the neck level.
         2.  **Delay (PLD):** We wait for the blood to flow up to the brain.
         3.  **Acquisition:** We take a "Labeled" image.
         4.  **Subtraction:** Control Image - Labeled Image = Perfusion.
         """
-        st.markdown(T(txt_fr, txt_en))
         
         # Petit focus physique
         with st.expander(T("⏱️ Focus Physique : Pourquoi TR > 4000ms ?", "⏱️ Physics Focus: Why TR > 4000ms?")):
