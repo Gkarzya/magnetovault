@@ -2682,7 +2682,12 @@ if 'nav_index' not in st.session_state:
 
 def update_nav():
     """Sauvegarde la position choisie dans la mémoire persistante."""
-    st.session_state.nav_index = liste_modules.index(st.session_state.nav_widget)
+    # Sécurité : on vérifie que le nom du module existe bien dans la liste traduite actuelle
+    if st.session_state.nav_widget in liste_modules:
+        st.session_state.nav_index = liste_modules.index(st.session_state.nav_widget)
+    else:
+        # En cas de désynchronisation serveur, on ramène l'utilisateur au premier onglet pour éviter le crash
+        st.session_state.nav_index = 0
 
 # MENU DÉROULANT
 module_actif = st.selectbox(
