@@ -302,7 +302,7 @@ class AdvancedMRIProcessor:
 
     # --- IDENTIFICATION INTELLIGENTE (MULTI-ATLAS + GEOMETRIE) ---
     def get_anatomical_labels(self, axis, index):
-        if not self.ready: return np.full((100, 100), "Chargement...")
+        if not self.ready: return np.full((100, 100), "Loading...")
         atlas_cort = self.atlas_cort_data; atlas_sub = self.atlas_sub_data
         mask_cc_vol = self.mask_cc; mask_cereb_vol = self.mask_cereb
         
@@ -324,29 +324,21 @@ class AdvancedMRIProcessor:
         
         def lookup_label(id_cort, id_sub, is_cc, is_cereb):
             # 1. GEOMETRIE FORTE
-            if is_cc: return "Corps Calleux"
-            if is_cereb: return "Cervelet (Hémisphère)"
+            if is_cc: return "Corpus Callosum"
+            if is_cereb: return "Cerebellum (Hemisphere)"
 
-            # 2. ATLAS SOUS-CORTICAL
+            # 2. ATLAS SOUS-CORTICAL (Nativenement en Anglais)
             if id_sub not in generic_sub_ids and id_sub < len(self.atlas_sub_labels):
-                lbl_sub = self.atlas_sub_labels[id_sub]
-                if "Brain-Stem" in lbl_sub: return "Tronc Cérébral (Mésencéphale/Pont)"
-                if "Thalamus" in lbl_sub: return "Thalamus"
-                if "Caudate" in lbl_sub: return "Noyau Caudé"
-                if "Putamen" in lbl_sub: return "Putamen"
-                if "Pallidum" in lbl_sub: return "Pallidum"
-                if "Hippocampus" in lbl_sub: return "Hippocampe"
-                if "Amygdala" in lbl_sub: return "Amygdale"
-                if "Accumbens" in lbl_sub: return "Noyau Accumbens"
-                return lbl_sub 
+                return self.atlas_sub_labels[id_sub]
             
-            # 3. ATLAS CORTICAL
-            if id_cort > 0 and id_cort < len(self.atlas_cort_labels): return self.atlas_cort_labels[id_cort] 
+            # 3. ATLAS CORTICAL (Nativement en Anglais)
+            if id_cort > 0 and id_cort < len(self.atlas_cort_labels): 
+                return self.atlas_cort_labels[id_cort] 
             
             # 4. FALLBACK
-            if id_sub in [1, 12]: return "Matière Blanche Cérébrale"
-            if id_sub in [2, 13]: return "Cortex (Non spécifié)"
-            return "Liquide / Os / Air"
+            if id_sub in [1, 12]: return "Cerebral White Matter"
+            if id_sub in [2, 13]: return "Cerebral Cortex"
+            return "Fluid / Bone / Air"
 
         vfunc = np.vectorize(lookup_label)
         return vfunc(ids_cort, ids_sub, sl_cc, sl_cereb)
