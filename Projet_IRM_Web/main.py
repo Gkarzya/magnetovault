@@ -290,12 +290,13 @@ def translate_seq(name):
     
     if st.session_state.lang == 'en':
         if "t1" in n: return "T1 Weighting"
+        # 🛡️ CORRECTION : L'ordinateur cherche "t2*" AVANT de chercher "t2"
+        if "t2*" in n or "gradient" in n: return "Gradient Echo (T2*)"
         if "t2" in n: return "T2 Weighting"
         if "densit" in n or "proton" in n: return "Proton Density"
         if "flair" in n: return "FLAIR (Fluid Suppressed)"
         if "stir" in n: return "STIR (Fat Suppressed)"
         if "diffusion" in n or "dwi" in n: return "Diffusion (DWI)"
-        if "gradient" in n: return "Gradient Echo"
         if "swi" in n: return "SWI"
         if "asl" in n: return "ASL"
         if "fat" in n and "sat" in n: return "Fat Sat"
@@ -303,12 +304,13 @@ def translate_seq(name):
         
     elif st.session_state.lang == 'de':
         if "t1" in n: return "T1-Wichtung"
+        # 🛡️ CORRECTION : L'ordinateur cherche "t2*" AVANT de chercher "t2"
+        if "t2*" in n or "gradient" in n: return "Gradientenecho (T2*)"
         if "t2" in n: return "T2-Wichtung"
         if "densit" in n or "proton" in n: return "Protonendichte (PD)"
         if "flair" in n: return "FLAIR"
         if "stir" in n: return "STIR (Fettunterdrückung)"
         if "diffusion" in n or "dwi" in n: return "Diffusion (DWI)"
-        if "gradient" in n: return "Gradientenecho (GRE)"
         if "swi" in n: return "SWI"
         if "asl" in n: return "ASL"
         if "fat" in n and "sat" in n: return "Fett-Sat"
@@ -3535,30 +3537,32 @@ elif module_actif == liste_modules[2]:
                 
         
         with col_k2:
+            # 1. Création du masque géométrique
             mask_k = np.zeros((S, S))
-            
-            if fill_mode == opt_lin: 
+            if "Linéaire" in fill_mode or "Linear" in fill_mode: 
                 lines_to_fill = int(S * (acq_pct / 100.0))
                 mask_k[0:lines_to_fill, :] = 1
             else: 
-                rayon_actuel = (acq_pct / 100.0) * 1.5 
-                mask_k[D <= rayon_actuel] = 1
+                mask_k[D <= (acq_pct / 100.0) * 1.5] = 1
                 
-            # Calcul local sécurisé pour l'espace K
+            # 2. Application du masque
             f_local = np.fft.fftshift(np.fft.fft2(final_complex))
             kspace_masked = f_local * mask_k
+            
+            # 3. Calcul de la reconstruction
             img_rec = np.abs(np.fft.ifft2(np.fft.ifftshift(kspace_masked)))
+            if np.max(img_rec) > 0: 
+                img_rec /= np.max(img_rec)
             
-            # --- CORRECTION RÉSOLUTION FANTÔME ---
-            max_val = np.max(img_rec)
-            if max_val > 0:
-                img_rec = img_rec / max_val
-            # -------------------------------------
+            # 4. RESTAURATION : Affichage de l'Espace K (Visuel géométrique)
+            fig_k, ax_k = plt.subplots(figsize=(4, 4))
+            ax_k.imshow(20 * np.log(np.abs(kspace_masked) + 1), cmap='inferno')
+            ax_k.axis('off')
+            st.pyplot(fig_k)
+            plt.close(fig_k)
             
-            fig_k = Figure(figsize=(4, 4))
-            ax_k = fig_k.subplots()
-            
-            st.image(img_rec, clamp=True, width=300, caption=T("Reconstruction", "Reconstruction", "Rekonstruktion"))
+            # 5. Affichage de la Reconstruction
+            st.image(img_rec, clamp=True, width=300, caption=T("Reconstruction", "Reconstruction"))
 
 # [TAB 3 : SIGNAUX]
 elif module_actif == liste_modules[3]:
