@@ -454,6 +454,12 @@ if seq_choix != st.session_state.seq:
         st.session_state.widget_tr = float(defaults['tr'])
     te_key_current = f"te_{current_reset_id}" 
     st.session_state[te_key_current] = float(defaults['te'])
+    
+    # --- CORRECTION : Forcer la mise à jour du TI lors du changement ---
+    ti_key_current = f"ti_{current_reset_id}"
+    st.session_state[ti_key_current] = float(defaults.get('ti', 0.0))
+    # -------------------------------------------------------------------
+    
     utils.safe_rerun()
 
 is_gre = "Gradient" in seq_choix
