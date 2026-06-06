@@ -59,7 +59,25 @@ def T(fr, en, de=None):
         return de if de is not None else en
     else:
         return en
-
+def declencher_reset_general():
+    """Applique la réinitialisation complète identique au bouton Reset de l'application"""
+    if 'reset_count' in st.session_state:
+        st.session_state.reset_count += 1
+    
+    # 1. Retour sur la séquence T1
+    st.session_state.seq = "Pondération T1"
+    
+    # 2. CORRECTION : Forcer le TR à reprendre la valeur par défaut du T1
+    try:
+        # On va chercher la vraie valeur par défaut du T1 dans tes constantes
+        t1_tr_default = float(cst.STD_PARAMS["Pondération T1"]["tr"])
+    except:
+        t1_tr_default = 500.0  # Sécurité si la constante n'est pas trouvée
+        
+    st.session_state.tr_force = t1_tr_default
+    
+    if 'widget_tr' in st.session_state:
+        st.session_state.widget_tr = t1_tr_default
 # --- FONCTIONS UTILITAIRES ---
 def get_img_as_base64(file_path):
     with open(file_path, "rb") as f:
@@ -386,28 +404,48 @@ with c_reset:
     if st.button(T("⚠️ Reset", "⚠️ Reset", "⚠️ Reset"), use_container_width=True):
         components.html("<script>window.parent.location.reload();</script>", height=0)
 
-with c_fr:
-    show_centered_image(flag_fr_path, width=23)
-    type_fr = "primary" if st.session_state.lang == 'fr' else "secondary"
-    if st.button("FR", key="lang_fr", type=type_fr, use_container_width=True):
-        st.session_state.lang = 'fr'
-        st.rerun()
+# --- ZONE DES DRAPEAUX (ALIGNEMENT GARANTI PAR RANGÉES) ---
+with st.sidebar:
+    # 1. CSS pour centrer, rapprocher et décaler les images
+    st.markdown("""
+        <style>
+        [data-testid="stImage"] {
+            display: flex;
+            justify-content: center;
+            margin-bottom: -15px; 
+            transform: translateX(35px); /* 🎯 MICRO-CORRECTION : Décale les drapeaux vers la droite */
+        }
+        </style>
+    """, unsafe_allow_html=True)
+    
+    # --- RANGÉE 1 : UNIQUEMENT LES IMAGES ---
+    col_img1, col_img2, col_img3 = st.columns(3)
+    with col_img1:
+        st.image("flag_fr.png", width=30)
+    with col_img2:
+        st.image("flag_uk.png", width=30)
+    with col_img3:
+        st.image("flag_de.png", width=30)
 
-with c_uk:
-    show_centered_image(flag_uk_path, width=23)
-    type_en = "primary" if st.session_state.lang == 'en' else "secondary"
-    if st.button("EN", key="lang_en", type=type_en, use_container_width=True):
-        st.session_state.lang = 'en'
-        st.rerun()
+    # --- RANGÉE 2 : UNIQUEMENT LES BOUTONS ---
+    col_btn1, col_btn2, col_btn3 = st.columns(3)
+    with col_btn1:
+        if st.button("FR", key="btn_lang_fr", use_container_width=True):
+            st.session_state.lang = "fr"
+            declencher_reset_general()
+            utils.safe_rerun()
+    with col_btn2:
+        if st.button("EN", key="btn_lang_en", use_container_width=True):
+            st.session_state.lang = "en"
+            declencher_reset_general()
+            utils.safe_rerun()
+    with col_btn3:
+        if st.button("DE", key="btn_lang_de", use_container_width=True):
+            st.session_state.lang = "de"
+            declencher_reset_general()
+            utils.safe_rerun()
 
-with c_de:
-    show_centered_image(flag_de_path, width=23)
-    type_de = "primary" if st.session_state.lang == 'de' else "secondary"
-    if st.button("DE", key="lang_de", type=type_de, use_container_width=True):
-        st.session_state.lang = 'de'
-        st.rerun()
-
-st.sidebar.markdown("---")
+    st.markdown("---")
 # --- SÉLECTEUR D'OBJET (AUTOMATIQUE & INVISIBLE) ---
 # On garde les définitions de clés pour la logique interne
 opt_brain  = "Cerveau"
