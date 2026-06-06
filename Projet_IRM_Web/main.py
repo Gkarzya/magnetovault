@@ -20,6 +20,8 @@ import constantes as cst
 import utils
 import physique as phy
 from anatomie import AdvancedMRIProcessor, HAS_NILEARN
+# Récupère le dossier exact où se trouve main.py
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # Initialisation de l'IA avec la clé cachée
 client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
 
@@ -421,11 +423,11 @@ with st.sidebar:
     # --- RANGÉE 1 : UNIQUEMENT LES IMAGES ---
     col_img1, col_img2, col_img3 = st.columns(3)
     with col_img1:
-        st.image("flag_fr.png", width=30)
+        st.image(os.path.join(BASE_DIR, "flag_fr.png"), width=30)
     with col_img2:
-        st.image("flag_uk.png", width=30)
+        st.image(os.path.join(BASE_DIR, "flag_uk.png"), width=30)
     with col_img3:
-        st.image("flag_de.png", width=30)
+        st.image(os.path.join(BASE_DIR, "flag_de.png"), width=30)
 
     # --- RANGÉE 2 : UNIQUEMENT LES BOUTONS ---
     col_btn1, col_btn2, col_btn3 = st.columns(3)
